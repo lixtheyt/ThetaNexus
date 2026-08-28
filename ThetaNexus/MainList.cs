@@ -373,7 +373,7 @@ namespace ThetaNexus
 
                     await events;
 
-                    if (!await EngineDown.Show(ex))
+                    if (!await EngineDown.Display(ex))
                         return;
                 }
             }
