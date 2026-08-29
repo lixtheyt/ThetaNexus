@@ -1,8 +1,11 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
+using System.Collections.Concurrent;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Diagnostics;
 using Color = Spectre.Console.Color;
+using ThetaNexus.Shared;
 
 namespace ThetaNexus
 {
@@ -11,14 +14,14 @@ namespace ThetaNexus
         internal static async Task Display(DockerClient client)
         {
             var sections = new[] { "containers", "images", "volumes", "networks", "events" };
-            var columns = new[] { "NAME", "STATE", "IMAGE", "PORTS", "CPU", "MEM", "UP" };
+            var columns = new[] { "NAME", "STATE", "IMAGE", "PORTS", "CPU", "MEM", "AGE" };
 
             var collapsed = new HashSet<string>();
             var selected = 0;
             var section = 0;
             var sortBy = 0;
             var descending = false;
-
+            
             while (true)
             {
                 using var cts = new CancellationTokenSource();
@@ -35,6 +38,7 @@ namespace ThetaNexus
 
                     var containers = await client.Containers.ListContainersAsync(new ContainersListParameters { All = true }, cts.Token);
 
+                    var pending = new ConcurrentDictionary<string, string>();
                     var refreshed = DateTime.UtcNow;
                     var stale = false;
                     var dirty = true;
@@ -45,8 +49,9 @@ namespace ThetaNexus
                         {
                             await client.System.MonitorEventsAsync(new ContainerEventsParameters(), new Progress<Message>(_ => stale = true), cts.Token);
                         }
-                        catch (OperationCanceledException)
+                        catch (Exception)
                         {
+                            stale = true;
                         }
                     });
 
@@ -57,6 +62,11 @@ namespace ThetaNexus
                         {
                             while (true)
                             {
+                                foreach (var (k, v) in pending)
+                                {
+                                    Debug.Write(k + " " + v);
+                                }
+
                                 if (stale || DateTime.UtcNow - refreshed > TimeSpan.FromSeconds(2))
                                 {
                                     stale = false;
@@ -138,6 +148,14 @@ namespace ThetaNexus
                                             collapsed.Add(toToggle);
                                             selected = rows.FindIndex(x => x.Project == toToggle && x.Container is null);
                                             break;
+
+                                        case ConsoleKey.Spacebar when rows.Count > 0 && rows[selected].Container is { } target:
+                                            await MainListActions.StartStop(client, target, pending, cts.Token);
+                                            break;
+
+                                        case ConsoleKey.Enter when rows.Count > 0 && rows[selected].Container is { } open:
+                                            await Details.Display(client, ctx, open);
+                                            break;
                                     }
 
                                     dirty = true;
@@ -169,42 +187,6 @@ namespace ThetaNexus
                                 var upWidth = 8;
                                 var imageWidth = showImage ? Math.Max(10, body - 2 - nameWidth - stateWidth - portsWidth - cpuWidth - memWidth - upWidth) : 0;
 
-                                string Compose((string Text, Color? Colour)[] cells, bool isSelected)
-                                {
-                                    var plain = string.Concat(cells.Select(x => x.Text));
-
-                                    var markup = string.Concat(cells.Select(x => x.Colour is null
-                                        ? Markup.Escape(x.Text)
-                                        : $"[{x.Colour.Value.ToMarkup()}]{Markup.Escape(x.Text)}[/]"));
-
-                                    if (plain.Length < body)
-                                        markup += new string(' ', body - plain.Length);
-
-                                    return isSelected ? $"[on #263041]{markup}[/]" : markup;
-                                }
-
-                                string Spread((string Text, Color? Colour)[] items)
-                                {
-                                    var gaps = Math.Max(1, items.Length - 1);
-                                    var space = Math.Max(gaps, body - items.Sum(x => x.Text.Length));
-
-                                    var markup = string.Empty;
-
-                                    for (var i = 0; i < items.Length; i++)
-                                    {
-                                        var (text, colour) = items[i];
-
-                                        markup += colour is null
-                                            ? Markup.Escape(text)
-                                            : $"[{colour.Value.ToMarkup()}]{Markup.Escape(text)}[/]";
-
-                                        if (i < items.Length - 1)
-                                            markup += new string(' ', space / gaps + (i < space % gaps ? 1 : 0));
-                                    }
-
-                                    return markup;
-                                }
-
                                 var bodyHeight = Math.Max(1, height - 9);
                                 var first = selected / bodyHeight * bodyHeight;
                                 var last = Math.Min(first + bodyHeight, rows.Count);
@@ -216,7 +198,7 @@ namespace ThetaNexus
                                         .AddColumn(new GridColumn { Alignment = Justify.Right })
                                         .AddRow("[bold]ThetaNexus[/]", $"[{Color.Grey.ToMarkup()}]{engine} · {containers.Count(x => x.State == "running")}/{containers.Count} running[/]"),
                                     new Rule { Style = new Style(Color.Grey35) },
-                                    new Markup(Spread([.. sections.Select((x, i) => (i == section ? x.ToUpperInvariant() : x, i == section ? (Color?)Color.SteelBlue1 : Color.Grey35))])),
+                                    new Markup(UI.Spread([.. sections.Select((x, i) => (i == section ? x.ToUpperInvariant() : x, i == section ? (Color?)Color.SteelBlue1 : Color.Grey35))], body)),
                                     new Rule { Style = new Style(Color.Grey35) },
                                     new Text(string.Empty)
                                 };
@@ -260,7 +242,7 @@ namespace ThetaNexus
                                         }, i == sortBy ? Color.SteelBlue1 : Color.Grey35));
                                     }
 
-                                    page.Add(new Markup(Compose([.. titles], false)));
+                                    page.Add(new Markup(UI.Compose([.. titles], body, false)));
 
                                     if (rows.Count == 0)
                                     {
@@ -277,32 +259,19 @@ namespace ThetaNexus
 
                                         if (container is null)
                                         {
-                                            page.Add(new Markup(Compose(
+                                            page.Add(new Markup(UI.Compose(
                                             [
                                                 (collapsed.Contains(project) ? "▶ " : "▼ ", Color.Grey),
                                                 (project, Color.Khaki1),
                                                 ($" ({groups.First(x => x.Key == project).Count()})", Color.Grey35)
-                                            ], i == selected)));
+                                            ], body, i == selected)));
 
                                             continue;
                                         }
 
-                                        var status = container.Status ?? string.Empty;
-                                        var paren = status.IndexOf('(');
-                                        var exit = paren >= 0 && status.IndexOf(')') > paren ? status[paren..(status.IndexOf(')') + 1)] : string.Empty;
-
-                                        var (glyph, colour) = container.State switch
-                                        {
-                                            "paused" => ("‖ paused", Color.SkyBlue1),
-                                            "restarting" => ("◌ restarting", Color.Yellow),
-                                            "created" => ("○ created", Color.Grey),
-                                            "exited" => ($"✗ exited {exit}".TrimEnd(), exit == "(0)" ? Color.Grey : Color.Red3),
-                                            "running" when status.Contains("(healthy)") => ("● healthy", Color.Green3_1),
-                                            "running" when status.Contains("(unhealthy)") => ("● unhealthy", Color.Orange1),
-                                            "running" when status.Contains("(health: starting)") => ("● starting", Color.Yellow),
-                                            "running" => ("● running", Color.Green3_1),
-                                            _ => (container.State ?? "?", Color.Grey)
-                                        };
+                                        var (glyph, colour) = pending.TryGetValue(container.ID, out var verb)
+                                            ? ($"◌  {verb}", Color.Yellow)
+                                            : UI.Glyph(container);
 
                                         var ports = (container.Ports ?? [])
                                             .Where(x => x.PublicPort > 0)
@@ -336,7 +305,7 @@ namespace ThetaNexus
                                             : age.TotalDays < 1 ? $"{(int)age.TotalHours}h"
                                             : $"{(int)age.TotalDays}d").PadLeft(upWidth), Color.CadetBlue));
 
-                                        page.Add(new Markup(Compose([.. cells], i == selected)));
+                                        page.Add(new Markup(UI.Compose([.. cells], body, i == selected)));
                                     }
                                 }
 
@@ -344,15 +313,16 @@ namespace ThetaNexus
                                     page.Add(new Text(string.Empty));
 
                                 page.Add(new Rule { Style = new Style(Color.Grey35) });
-                                page.Add(new Markup(Spread(
+                                page.Add(new Markup(UI.Spread(
                                 [
                                     ("↑↓ move", Color.Grey),
                                     ("←→ section", Color.Grey),
                                     ("TAB sort", Color.Grey),
+                                    ("SHIFT+TAB invert sort", Color.Grey),
                                     ("c collapse", Color.Grey),
-                                    ("⏎ details", Color.Grey35),
-                                    ("␣ start/stop", Color.Grey35)
-                                ])));
+                                    ("⏎ details", Color.Grey),
+                                    ("␣ start/stop", Color.Grey)
+                                ], body)));
 
                                 ctx.UpdateTarget(new Padder(new Rows(page), new Padding(2, 1, 2, 0)));
                                 ctx.Refresh();
