@@ -76,6 +76,14 @@ desktop.ini
 $RECYCLE.BIN/
 .DS_Store
 
+# Generated banners (regenerate with docs/bannery/banners.py)
+ThetaNexus Bannery/
+
+# Visual Studio local databases
+*.opendb
+*.VC.db
+*.dbmdl
+
 # Local-only project notes
 CLAUDE.md
 docs/

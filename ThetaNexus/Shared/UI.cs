@@ -1,4 +1,4 @@
-﻿using Docker.DotNet.Models;
+using Docker.DotNet.Models;
 using Spectre.Console;
 using System;
 using System.Collections.Generic;
@@ -26,6 +26,23 @@ namespace ThetaNexus.Shared
                 "running" when status.Contains("(health: starting)") => ("●  starting", Color.Yellow),
                 "running" => ("●  running", Color.Green3_1),
                 _ => (container.State ?? "?", Color.Grey)
+            };
+        }
+
+        internal static (string Text, Color Colour) Glyph(ContainerInspectResponse inspect)
+        {
+            var state = inspect.State;
+
+            return state switch
+            {
+                { Paused: true } => ("▎▎ paused", Color.SkyBlue1),
+                { Restarting: true } => ("◌  restarting", Color.Yellow),
+                { Running: true } when state.Health?.Status == "unhealthy" => ("●  unhealthy", Color.Orange1),
+                { Running: true } when state.Health?.Status == "starting" => ("●  starting", Color.Yellow),
+                { Running: true } when state.Health?.Status == "healthy" => ("●  healthy", Color.Green3_1),
+                { Running: true } => ("●  running", Color.Green3_1),
+                { Status: "created" } => ("○  created", Color.Grey),
+                _ => ($"✗  exited ({state.ExitCode})", state.ExitCode == 0 ? Color.Grey : Color.Red3)
             };
         }
 
@@ -64,5 +81,8 @@ namespace ThetaNexus.Shared
 
             return markup;
         }
+
+        internal static string Crop(string text, int max)
+            => text.Length <= max ? text : text[..Math.Max(1, max - 1)] + "…";
     }
 }
