@@ -1,9 +1,7 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
-using System.Collections.Concurrent;
 using Spectre.Console;
 using Spectre.Console.Rendering;
-using System.Diagnostics;
 using Color = Spectre.Console.Color;
 using ThetaNexus.Shared;
 
@@ -13,8 +11,12 @@ namespace ThetaNexus
     {
         internal static async Task Display(DockerClient client)
         {
-            var sections = new[] { "containers", "images", "volumes", "networks", "events" };
-            var columns = new[] { "NAME", "STATE", "IMAGE", "PORTS", "CPU", "MEM", "AGE" };
+            var sections = Enum.GetNames<Models.MainListSections>()
+                .Select(x => x.ToLower())
+                .ToArray();
+            var sorts = Enum.GetNames<Models.MainListSorts>()
+                .Select(x => x.ToUpper())
+                .ToArray();
 
             var collapsed = new HashSet<string>();
             var selected = 0;
@@ -27,6 +29,7 @@ namespace ThetaNexus
                 using var cts = new CancellationTokenSource();
 
                 var events = Task.CompletedTask;
+                var stats = Task.CompletedTask;
 
                 try
                 {
@@ -37,8 +40,9 @@ namespace ThetaNexus
                     var engine = $"engine {version.Version}";
 
                     var containers = await client.Containers.ListContainersAsync(new ContainersListParameters { All = true }, cts.Token);
+                    stats = Task.Run(()
+                        => ContainerStats.Watch(client, cts.Token));
 
-                    var pending = new ConcurrentDictionary<string, string>();
                     var refreshed = DateTime.UtcNow;
                     var stale = false;
                     var dirty = true;
@@ -62,11 +66,6 @@ namespace ThetaNexus
                         {
                             while (true)
                             {
-                                foreach (var (k, v) in pending)
-                                {
-                                    Debug.Write(k + " " + v);
-                                }
-
                                 if (stale || DateTime.UtcNow - refreshed > TimeSpan.FromSeconds(2))
                                 {
                                     stale = false;
@@ -136,7 +135,7 @@ namespace ThetaNexus
                                             break;
 
                                         case ConsoleKey.Tab:
-                                            sortBy = (sortBy + 1) % columns.Length;
+                                            sortBy = (sortBy + 1) % sorts.Length;
                                             break;
 
                                         case ConsoleKey.C when rows.Count > 0:
@@ -150,11 +149,11 @@ namespace ThetaNexus
                                             break;
 
                                         case ConsoleKey.Spacebar when rows.Count > 0 && rows[selected].Container is { } target:
-                                            await MainListActions.StartStop(client, target, pending, cts.Token);
+                                            await ContainerActions.StartStop(client, target, cts.Token);
                                             break;
 
                                         case ConsoleKey.Enter when rows.Count > 0 && rows[selected].Container is { } open:
-                                            await Details.Display(client, ctx, open);
+                                            await Details.Display(client, ctx, open, cts.Token);
                                             break;
                                     }
 
@@ -203,6 +202,10 @@ namespace ThetaNexus
                                     new Text(string.Empty)
                                 };
 
+                                ContainerStats.Track(containers
+                                    .Where(x => x.State == "running")
+                                    .Select(x => x.ID));
+
                                 var drawn = 0;
 
                                 if (section != 0)
@@ -216,7 +219,7 @@ namespace ThetaNexus
                                 {
                                     var titles = new List<(string, Color?)> { ("  ", null) };
 
-                                    for (var i = 0; i < columns.Length; i++)
+                                    for (var i = 0; i < sorts.Length; i++)
                                     {
                                         var titleWidth = i switch
                                         {
@@ -232,7 +235,7 @@ namespace ThetaNexus
                                         if (titleWidth == 0)
                                             continue;
 
-                                        var label = i == sortBy ? $"{columns[i]} {(descending ? '▼' : '▲')}" : columns[i];
+                                        var label = i == sortBy ? $"{sorts[i]} {(descending ? '▼' : '▲')}" : sorts[i];
 
                                         titles.Add((i switch
                                         {
@@ -269,7 +272,7 @@ namespace ThetaNexus
                                             continue;
                                         }
 
-                                        var (glyph, colour) = pending.TryGetValue(container.ID, out var verb)
+                                        var (glyph, colour) = ContainerActions.Pending(container.ID) is { } verb
                                             ? ($"◌  {verb}", Color.Yellow)
                                             : UI.Glyph(container);
 
@@ -295,10 +298,14 @@ namespace ThetaNexus
                                             cells.Add(((ports.Count > 0 ? string.Join(" ", ports) : "–").PadRight(portsWidth), Color.Aqua));
 
                                         if (showCpu)
-                                            cells.Add(("–".PadLeft(cpuWidth - 1) + " ", Color.Grey35));
+                                            cells.Add((ContainerStats.Stats(container.ID)?.Cpu is { } cpu 
+                                                ? $"{cpu:0.0}%".PadLeft(cpuWidth - 1) + " " 
+                                                : "–".PadLeft(cpuWidth - 1) + " ", Color.Grey35));
 
                                         if (showMem)
-                                            cells.Add(("–".PadLeft(memWidth - 1) + " ", Color.Grey35));
+                                            cells.Add((ContainerStats.Stats(container.ID)?.Memory is { } mem 
+                                                ? $"{mem/1_000_000.0:0.0} MB".PadLeft(memWidth - 1) + " " 
+                                                : "–".PadLeft(memWidth - 1) + " ", Color.Grey35));
 
                                         cells.Add(((age.TotalMinutes < 1 ? $"{(int)age.TotalSeconds}s"
                                             : age.TotalHours < 1 ? $"{(int)age.TotalMinutes}m"
@@ -333,6 +340,8 @@ namespace ThetaNexus
 
                     await events;
 
+                    await stats;
+
                     AnsiConsole.Clear();
 
                     return;
@@ -342,6 +351,8 @@ namespace ThetaNexus
                     cts.Cancel();
 
                     await events;
+
+                    await stats;
 
                     if (!await EngineDown.Display(ex))
                         return;

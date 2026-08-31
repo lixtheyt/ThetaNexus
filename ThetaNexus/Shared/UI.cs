@@ -83,6 +83,8 @@ namespace ThetaNexus.Shared
         }
 
         internal static string Crop(string text, int max)
-            => text.Length <= max ? text : text[..Math.Max(1, max - 1)] + "…";
+            => text.Length <= max 
+                ? text 
+                : text[..Math.Max(1, max - 1)] + "…";
     }
 }
