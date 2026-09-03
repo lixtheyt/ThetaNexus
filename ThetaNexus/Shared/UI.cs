@@ -9,7 +9,7 @@ namespace ThetaNexus.Shared
 {
     internal class UI
     {
-        internal static (string Text, Color Colour) Glyph(ContainerListResponse container)
+        internal static (string Text, Color Color) Glyph(ContainerListResponse container)
         {
             var status = container.Status ?? string.Empty;
             var paren = status.IndexOf('(');
@@ -29,7 +29,7 @@ namespace ThetaNexus.Shared
             };
         }
 
-        internal static (string Text, Color Colour) Glyph(ContainerInspectResponse inspect)
+        internal static (string Text, Color Color) Glyph(ContainerInspectResponse inspect)
         {
             var state = inspect.State;
 
@@ -46,13 +46,13 @@ namespace ThetaNexus.Shared
             };
         }
 
-        internal static string Compose((string Text, Color? Colour)[] cells, int body, bool isSelected)
+        internal static string Compose((string Text, Color? Color)[] cells, int body, bool isSelected)
         {
             var plain = string.Concat(cells.Select(x => x.Text));
 
-            var markup = string.Concat(cells.Select(x => x.Colour is null
+            var markup = string.Concat(cells.Select(x => x.Color is null
                 ? Markup.Escape(x.Text)
-                : $"[{x.Colour.Value.ToMarkup()}]{Markup.Escape(x.Text)}[/]"));
+                : $"[{x.Color.Value.ToMarkup()}]{Markup.Escape(x.Text)}[/]"));
 
             if (plain.Length < body)
                 markup += new string(' ', body - plain.Length);
@@ -60,20 +60,20 @@ namespace ThetaNexus.Shared
             return isSelected ? $"[on #263041]{markup}[/]" : markup;
         }
 
-        internal static string Spread((string Text, Color? Colour)[] items, int body)
+        internal static string Spread((string Text, Color? Color)[] items, int body)
         {
             var gaps = Math.Max(1, items.Length - 1);
             var space = Math.Max(gaps, body - items.Sum(x => x.Text.Length));
 
             var markup = string.Empty;
 
-            for (var i = 0; i < items.Length; i++)
+            for (int i = 0; i < items.Length; i++)
             {
-                var (text, colour) = items[i];
+                var (text, Color) = items[i];
 
-                markup += colour is null
+                markup += Color is null
                     ? Markup.Escape(text)
-                    : $"[{colour.Value.ToMarkup()}]{Markup.Escape(text)}[/]";
+                    : $"[{Color.Value.ToMarkup()}]{Markup.Escape(text)}[/]";
 
                 if (i < items.Length - 1)
                     markup += new string(' ', space / gaps + (i < space % gaps ? 1 : 0));
@@ -83,8 +83,12 @@ namespace ThetaNexus.Shared
         }
 
         internal static string Crop(string text, int max)
-            => text.Length <= max 
-                ? text 
-                : text[..Math.Max(1, max - 1)] + "…";
+        {
+            var flat = string.Concat(text.Select(x => char.IsControl(x) ? ' ' : x));
+
+            return flat.Length <= max
+                ? flat
+                : flat[..Math.Max(1, max - 1)] + "…";
+        }
     }
 }

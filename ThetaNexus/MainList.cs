@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using Spectre.Console;
@@ -152,6 +154,9 @@ namespace ThetaNexus
                                             await ContainerActions.StartStop(client, target, cts.Token);
                                             break;
 
+                                        case ConsoleKey.Q:
+                                            return;
+
                                         case ConsoleKey.Enter when rows.Count > 0 && rows[selected].Container is { } open:
                                             await Details.Display(client, ctx, open, cts.Token);
                                             break;
@@ -180,7 +185,7 @@ namespace ThetaNexus
 
                                 var nameWidth = Math.Clamp(containers.Count == 0 ? 14 : containers.Max(x => x.Names[0].TrimStart('/').Length) + 2, 14, 28);
                                 var stateWidth = 16;
-                                var portsWidth = showPorts ? 12 : 0;
+                                var portsWidth = showPorts ? 15 : 0;
                                 var cpuWidth = showCpu ? 8 : 0;
                                 var memWidth = showMem ? 12 : 0;
                                 var upWidth = 8;
@@ -219,7 +224,7 @@ namespace ThetaNexus
                                 {
                                     var titles = new List<(string, Color?)> { ("  ", null) };
 
-                                    for (var i = 0; i < sorts.Length; i++)
+                                    for (int i = 0; i < sorts.Length; i++)
                                     {
                                         var titleWidth = i switch
                                         {
@@ -254,7 +259,7 @@ namespace ThetaNexus
                                         drawn = 1;
                                     }
 
-                                    for (var i = first; i < last; i++)
+                                    for (int i = first; i < last; i++)
                                     {
                                         var (project, container) = rows[i];
 
@@ -272,7 +277,7 @@ namespace ThetaNexus
                                             continue;
                                         }
 
-                                        var (glyph, colour) = ContainerActions.Pending(container.ID) is { } verb
+                                        var (glyph, color) = ContainerActions.Pending(container.ID) is { } verb
                                             ? ($"◌  {verb}", Color.Yellow)
                                             : UI.Glyph(container);
 
@@ -288,23 +293,28 @@ namespace ThetaNexus
                                         {
                                             ("  ", null),
                                             (container.Names[0].TrimStart('/').PadRight(nameWidth), Color.SteelBlue1),
-                                            (glyph.PadRight(stateWidth), colour)
+                                            (glyph.PadRight(stateWidth), color)
                                         };
 
                                         if (showImage)
                                             cells.Add((container.Image.PadRight(imageWidth), Color.MediumPurple2));
 
                                         if (showPorts)
-                                            cells.Add(((ports.Count > 0 ? string.Join(" ", ports) : "–").PadRight(portsWidth), Color.Aqua));
+                                            cells.Add((UI.Crop(ports.Count switch
+                                            {
+                                                0 => "–",
+                                                1 => ports[0],
+                                                _ => $"{ports[0]} +{ports.Count - 1}"
+                                            }, portsWidth - 1).PadRight(portsWidth), Color.Aqua));
 
                                         if (showCpu)
                                             cells.Add((ContainerStats.Stats(container.ID)?.Cpu is { } cpu 
-                                                ? $"{cpu:0.0}%".PadLeft(cpuWidth - 1) + " " 
+                                                ? cpu.ToString("0.0", CultureInfo.InvariantCulture).PadLeft(cpuWidth - 2) + "% "
                                                 : "–".PadLeft(cpuWidth - 1) + " ", Color.Grey35));
 
                                         if (showMem)
-                                            cells.Add((ContainerStats.Stats(container.ID)?.Memory is { } mem 
-                                                ? $"{mem/1_000_000.0:0.0} MB".PadLeft(memWidth - 1) + " " 
+                                            cells.Add((ContainerStats.Stats(container.ID) is { } used
+                                                ? $"{used.Memory / 1024 / 1024}/{used.Limit / 1024 / 1024} MB".PadLeft(memWidth - 1) + " "
                                                 : "–".PadLeft(memWidth - 1) + " ", Color.Grey35));
 
                                         cells.Add(((age.TotalMinutes < 1 ? $"{(int)age.TotalSeconds}s"
@@ -316,7 +326,7 @@ namespace ThetaNexus
                                     }
                                 }
 
-                                for (var i = drawn; i < bodyHeight; i++)
+                                for (int i = drawn; i < bodyHeight; i++)
                                     page.Add(new Text(string.Empty));
 
                                 page.Add(new Rule { Style = new Style(Color.Grey35) });
@@ -328,7 +338,8 @@ namespace ThetaNexus
                                     ("SHIFT+TAB invert sort", Color.Grey),
                                     ("c collapse", Color.Grey),
                                     ("⏎ details", Color.Grey),
-                                    ("␣ start/stop", Color.Grey)
+                                    ("␣ start/stop", Color.Grey),
+                                    ("q quit", Color.Grey)
                                 ], body)));
 
                                 ctx.UpdateTarget(new Padder(new Rows(page), new Padding(2, 1, 2, 0)));
