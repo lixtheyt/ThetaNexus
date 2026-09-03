@@ -20,9 +20,10 @@ namespace ThetaNexus
 
             var assembly = Assembly.GetExecutingAssembly();
 
-            using var stream = assembly.GetManifestResourceStream("ThetaNexus.Figlet_Fonts.Bloody.flf");
+            using var stream = assembly.GetManifestResourceStream("ThetaNexus.Figlet_Fonts.Bloody.flf")
+                ?? throw new InvalidOperationException($"Bloody.flf is not in the assembly. Available: {string.Join(", ", assembly.GetManifestResourceNames())}");
 
-            var font = FigletFont.Load(stream!);
+            var font = FigletFont.Load(stream);
 
             var top = Math.Max(0, (Console.WindowHeight - font.Height) / 2);
 
