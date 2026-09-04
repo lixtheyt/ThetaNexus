@@ -3,6 +3,9 @@ using Docker.DotNet.Models;
 
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Collections;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.Reflection.Metadata.Ecma335;
 using System.Runtime.CompilerServices;
@@ -16,7 +19,7 @@ namespace ThetaNexus
 {
     internal static class Details
     {
-        internal static async Task Display(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
+        internal static async Task<string?> Display(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
         {
             var tabs = Enum.GetNames<Models.DetailsTabs>()
                 .Select(x => x.ToLower())
@@ -39,16 +42,12 @@ namespace ThetaNexus
                     switch (key.Key)
                     {
                         case ConsoleKey.Escape:
-                            return;
+                            return null;
                         case ConsoleKey.Tab when key.Modifiers.HasFlag(ConsoleModifiers.Shift):
-                            section = (section + tabs.Length - 1) % tabs.Length;
-                            break;
                         case ConsoleKey.LeftArrow:
                             section = (section + tabs.Length - 1) % tabs.Length;
                             break;
                         case ConsoleKey.Tab:
-                            section = (section + 1) % tabs.Length;
-                            break;
                         case ConsoleKey.RightArrow:
                             section = (section + 1) % tabs.Length;
                             break;
@@ -58,11 +57,16 @@ namespace ThetaNexus
                         case ConsoleKey.S:
                             await DisplayStats(client, ctx, container, token);
                             break;
-                        case ConsoleKey.V when section == 1:
+                        case ConsoleKey.V when section == (int)Models.DetailsTabs.Env:
                             hidden = !hidden;
                             break;
                         case ConsoleKey.L:
                             await DisplayLogs(client, ctx, container, token);
+                            break;
+                        case ConsoleKey.E when inspect.State.Running:
+                            return container.ID;
+                        case ConsoleKey.Enter:
+                            await DisplayJson(ctx, container, token);
                             break;
                     }
 
@@ -127,9 +131,9 @@ namespace ThetaNexus
 
                 var extra = 0;
 
-                switch (section)
+                switch ((Models.DetailsTabs)section)
                 {
-                    case 0: //overview
+                    case Models.DetailsTabs.Overview:
                         {
                             var published = (inspect.NetworkSettings.Ports ?? new Dictionary<string, IList<PortBinding>>())
                                 .Where(x => x.Value is not null)
@@ -169,7 +173,7 @@ namespace ThetaNexus
                                 .AddRow(new Markup($"[{Color.Grey}]Project[/]"), new Markup(project)); // project
                             break;
                         }
-                    case 1: // env
+                    case Models.DetailsTabs.Env:
                         {
                             grid.AddColumn(new GridColumn { Padding = new Padding(0, 0, 4, 0), NoWrap = true })
                                 .AddColumn(new GridColumn { NoWrap = true });
@@ -188,7 +192,7 @@ namespace ThetaNexus
 
                             break;
                         }
-                    case 2: // mounts
+                    case Models.DetailsTabs.Mounts:
                         {
                             grid.AddColumn(new GridColumn { Padding = new Padding(0, 0, 4, 0), NoWrap = true })
                                 .AddColumn(new GridColumn { NoWrap = true });
@@ -201,7 +205,7 @@ namespace ThetaNexus
                                 grid.AddRow(new Text(""), new Markup($"[{Color.Grey}]This container has no mounts.[/]"));
                             break;
                         }
-                    case 3: // networks
+                    case Models.DetailsTabs.Networks:
                         {
                             grid.AddColumn(new GridColumn { Padding = new Padding(0, 0, 4, 0), NoWrap = true })
                                 .AddColumn(new GridColumn { NoWrap = true });
@@ -223,7 +227,7 @@ namespace ThetaNexus
 
                             break;
                         }
-                    case 4: // health
+                    case Models.DetailsTabs.Health:
                         {
                             grid.AddColumn(new GridColumn { Padding = new Padding(0, 0, 4, 0), NoWrap = true })
                                 .AddColumn(new GridColumn { NoWrap = true });
@@ -276,11 +280,11 @@ namespace ThetaNexus
 
                 page.Add(new Rule { Style = new Style(Color.Grey) });
                 page.Add(new Markup(
-                    section == 1
+                    section == (int)Models.DetailsTabs.Env
                     ? UI.Spread(
                     [
                         ("ESC back", Color.Grey),
-                        ("TAB tab", Color.Grey),
+                        ("TAB/←→ section", Color.Grey),
                         ("⏎ raw JSON", Color.Grey),
                         ("l logs", Color.Grey),
                         ("s stats", Color.Grey),
@@ -291,7 +295,7 @@ namespace ThetaNexus
                     : UI.Spread(
                     [
                         ("ESC back", Color.Grey),
-                        ("TAB tab", Color.Grey),
+                        ("TAB/←→ section", Color.Grey),
                         ("⏎ raw JSON", Color.Grey),
                         ("l logs", Color.Grey),
                         ("s stats", Color.Grey),
@@ -304,7 +308,7 @@ namespace ThetaNexus
             }
         }
 
-        internal static async Task DisplayStats(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
+        private static async Task DisplayStats(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
         {
             var latest = (ContainerStatsResponse?)null;
             var dirty = true;
@@ -476,7 +480,7 @@ namespace ThetaNexus
             }
         }
 
-        internal static async Task DisplayLogs(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
+        private static async Task DisplayLogs(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
         {
             var buffer = new byte[16 * 1024];
             var chars = new char[buffer.Length];
@@ -488,6 +492,8 @@ namespace ThetaNexus
             var visible = 0;
 
             List<(bool Error, string Text)> logs = new();
+            var incoming = new ConcurrentQueue<(bool Error, string Text)>();
+
             string[] partials = ["", ""];
 
             var decoders = new Decoder[2]
@@ -496,44 +502,65 @@ namespace ThetaNexus
                 Encoding.UTF8.GetDecoder() // stderr
             };
 
-            var inspect = await client.Containers.InspectContainerAsync(container.ID, token);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+
+            var inspect = await client.Containers.InspectContainerAsync(container.ID, cts.Token);
 
             using var stream = await client.Containers.GetContainerLogsAsync(container.ID, inspect.Config.Tty, new ContainerLogsParameters
             {
-                Follow = false,
+                Follow = true,
                 ShowStdout = true,
                 ShowStderr = true,
                 Timestamps = false,
                 Tail = "500"
-            }, token);
+            }, cts.Token);
+
+            var reader = Task.Run(async () =>
+            {
+                try
+                {
+                    while (true)
+                    {
+                        var read = await stream.ReadOutputAsync(buffer, 0, buffer.Length, cts.Token);
+
+                        if (read.EOF)
+                            break;
+
+                        int i = read.Target == MultiplexedStream.TargetStream.StandardError
+                            ? 1
+                            : 0;
+
+                        var charsNumber = decoders[i].GetChars(buffer, 0, read.Count, chars, 0);
+
+                        var parts = (partials[i] + new string(chars, 0, charsNumber)).Split('\n');
+
+                        foreach (var line in parts[..^1])
+                            incoming.Enqueue((i == 1, line.TrimEnd('\r')));
+
+                        partials[i] = parts[^1];
+                    }
+
+                    for (int i = 0; i < partials.Length; i++)
+                        if (partials[i].Length > 0)
+                            incoming.Enqueue((i == 1, partials[i]));
+                }
+                catch (OperationCanceledException)
+                {
+                    // ignored
+                }
+            }, cts.Token);
 
             while (true)
             {
-                var read = await stream.ReadOutputAsync(buffer, 0, buffer.Length, token);
+                while (incoming.TryDequeue(out var line))
+                {
+                    logs.Add(line);
+                    dirty = true;
 
-                if (read.EOF)
-                    break;
+                    if (offset > 0)
+                        offset++;
+                }
 
-                int i = read.Target == MultiplexedStream.TargetStream.StandardError
-                    ? 1
-                    : 0;
-
-                var charsNumber = decoders[i].GetChars(buffer, 0, read.Count, chars, 0);
-
-                var parts = (partials[i] + new string(chars, 0, charsNumber)).Split('\n');
-
-                foreach (var line in parts[..^1])
-                    logs.Add((i == 1, line.TrimEnd('\r')));
-
-                partials[i] = parts[^1];
-            }
-
-            for (int i = 0; i < partials.Length; i++)
-                if (partials[i].Length > 0)
-                    logs.Add((i == 1, partials[i]));
-
-            while (true)
-            {
                 if (Console.KeyAvailable)
                 {
                     var key = Console.ReadKey(intercept: true);
@@ -541,6 +568,8 @@ namespace ThetaNexus
                     switch (key.Key)
                     {
                         case ConsoleKey.Escape:
+                            await cts.CancelAsync();
+                            await reader;
                             return;
                         case ConsoleKey.UpArrow:
                             offset++;
@@ -560,6 +589,9 @@ namespace ThetaNexus
                         case ConsoleKey.End:
                             offset = 0;
                             break;
+                        case ConsoleKey.F:
+                            offset = 0;
+                            break;
                     }
 
                     dirty = true;
@@ -569,13 +601,13 @@ namespace ThetaNexus
                 if (DateTime.UtcNow - refreshed > TimeSpan.FromSeconds(1))
                 {
                     refreshed = DateTime.UtcNow;
-                    inspect = await client.Containers.InspectContainerAsync(container.ID, token);
+                    inspect = await client.Containers.InspectContainerAsync(container.ID, cts.Token);
                     dirty = true;
                 }
 
                 if (!dirty)
                 {
-                    await Task.Delay(50);
+                    await Task.Delay(50, cts.Token);
                     continue;
                 }
 
@@ -607,7 +639,7 @@ namespace ThetaNexus
                         .AddColumn(new GridColumn { Alignment = Justify.Right })
                         .AddRow(
                             $"[bold {Color.SteelBlue1}]LOGS[/]",
-                            $"[{Color.Grey35}]{logs.Count} lines[/] [{Color.Grey35}]·[/] [{Color.Grey35}]{logs.Count(x => x.Error)} stderr[/]{(offset > 0 ? $" [{Color.Grey35}]·[/] [{Color.SteelBlue1}]▼ {offset}[/]" : string.Empty)}"),
+                            $"[{(offset == 0 ? Color.Green3_1 : Color.Grey35)}]follow {(offset == 0 ? "ON" : "OFF")}[/] [{Color.Grey35}]·[/] [{Color.Grey35}]{logs.Count} lines[/] [{Color.Grey35}]·[/] [{Color.Grey35}]{logs.Count(x => x.Error)} stderr[/]{(offset > 0 ? $" [{Color.Grey35}]·[/] [{Color.SteelBlue1}]▼ {offset}[/]" : string.Empty)}{(reader.IsCompleted ? $" [{Color.Grey35}]·[/] [{Color.Orange1}]stream ended[/]" : string.Empty)}"),
                     new Rule { Style = new Style(Color.Grey35) },
                     new Text(string.Empty)
                 };
@@ -636,6 +668,7 @@ namespace ThetaNexus
                 [
                     ("ESC back", Color.Grey),
                     ("↑↓ scroll", Color.Grey),
+                    ("F follow", Color.Grey),
                     ("PgUp/PgDn page", Color.Grey),
                     ("home/end jump", Color.Grey)
                 ], body)));
@@ -645,9 +678,123 @@ namespace ThetaNexus
             }
         }
 
-        internal static async Task MoreActions(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container)
+        private static async Task DisplayJson(LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
         {
+            using var child = Process.Start(new ProcessStartInfo("docker")
+            {
+                ArgumentList = { "inspect", container.ID },
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            });
 
+            var json = child == null 
+                ? string.Empty 
+                : await child.StandardOutput.ReadToEndAsync(token);
+
+            if (child != null)
+                await child.WaitForExitAsync(token);
+
+            string[] lines = string.IsNullOrWhiteSpace(json)
+                ? ["docker inspect returned nothing. The container is most likely gone."]
+                : [.. json.Split('\n').Select(x => x.TrimEnd('\r'))];
+
+            var captured = DateTime.Now;
+
+            var offset = 0;
+            var visible = 0;
+            var dirty = true;
+
+            while (true)
+            {
+                if (Console.KeyAvailable)
+                {
+                    var key = Console.ReadKey(intercept: true);
+
+                    switch (key.Key)
+                    {
+                        case ConsoleKey.Escape:
+                            return;
+                        case ConsoleKey.UpArrow:
+                            offset--;
+                            break;
+                        case ConsoleKey.DownArrow:
+                            offset++;
+                            break;
+                        case ConsoleKey.PageUp:
+                            offset -= Math.Max(1, visible);
+                            break;
+                        case ConsoleKey.PageDown:
+                            offset += Math.Max(1, visible);
+                            break;
+                        case ConsoleKey.Home:
+                            offset = 0;
+                            break;
+                        case ConsoleKey.End:
+                            offset = lines.Length;
+                            break;
+                    }
+
+                    dirty = true;
+                    continue;
+                }
+
+                if (!dirty)
+                {
+                    await Task.Delay(50, token);
+                    continue;
+                }
+
+                dirty = false;
+
+                var width = AnsiConsole.Profile.Width;
+                var height = Console.WindowHeight;
+                var body = width - 4;
+                var bodyHeight = Math.Max(1, height - 9);
+
+                visible = bodyHeight;
+                offset = Math.Clamp(offset, 0, Math.Max(0, lines.Length - bodyHeight));
+
+                var last = Math.Min(lines.Length, offset + bodyHeight);
+
+                var page = new List<IRenderable>
+                {
+                    new Grid { Expand = true }
+                        .AddColumn(new GridColumn())
+                        .AddColumn(new GridColumn { Alignment = Justify.Right })
+                        .AddRow(
+                            $"[{Color.SteelBlue1}]{Markup.Escape(container.Names[0].TrimStart('/'))}[/]   [{Color.MediumPurple2}]{Markup.Escape(container.Image)}[/] [{Color.Grey35}]·[/] [{Color.DarkOrange3}]{container.ID[..12]}[/]",
+                            string.Empty),
+                    new Rule { Style = new Style(Color.Grey35) },
+                    new Grid { Expand = true }
+                        .AddColumn(new GridColumn())
+                        .AddColumn(new GridColumn { Alignment = Justify.Right })
+                        .AddRow(
+                            $"[bold {Color.SteelBlue1}]RAW JSON[/]",
+                            $"[{Color.Grey35}]captured {captured:HH:mm:ss}[/] [{Color.Grey35}]·[/] [{Color.CadetBlue}]{offset + 1}–{last}[/] [{Color.Grey35}]of {lines.Length} lines[/]"),
+                    new Rule { Style = new Style(Color.Grey35) },
+                    new Text(string.Empty)
+                };
+
+                var window = lines.Skip(offset).Take(bodyHeight).ToArray();
+
+                foreach (var line in window)
+                    page.Add(new Text(UI.Crop(line, body), new Style(Color.Grey)));
+
+                for (int i = window.Length; i < bodyHeight; i++)
+                    page.Add(new Text(string.Empty));
+
+                page.Add(new Rule { Style = new Style(Color.Grey35) });
+                page.Add(new Markup(UI.Spread(
+                [
+                    ("ESC back", Color.Grey),
+                    ("↑↓ scroll", Color.Grey),
+                    ("PgUp/PgDn page", Color.Grey),
+                    ("home/end jump", Color.Grey)
+                ], body)));
+
+                ctx.UpdateTarget(new Padder(new Rows(page), new Padding(2, 1, 2, 0)));
+                ctx.Refresh();
+            }
         }
     }
 }

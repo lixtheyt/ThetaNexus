@@ -34,5 +34,14 @@ namespace ThetaNexus.Shared
             Networks,
             Health
         }
+
+        internal enum MainListImageShorts
+        {
+            Repository,
+            Tag,
+            Size,
+            Created,
+            Used
+        }
     }
 }

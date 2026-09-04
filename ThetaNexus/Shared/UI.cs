@@ -2,6 +2,7 @@ using Docker.DotNet.Models;
 using Spectre.Console;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using Color = Spectre.Console.Color;
 
@@ -81,6 +82,12 @@ namespace ThetaNexus.Shared
 
             return markup;
         }
+
+        internal static string Size(long bytes)
+            => bytes >= 1_000_000_000 ? (bytes / 1e9).ToString("0.0", CultureInfo.InvariantCulture) + " GB"
+                : bytes >= 1_000_000 ? (bytes / 1e6).ToString("0.0", CultureInfo.InvariantCulture) + " MB"
+                : bytes >= 1_000 ? (bytes / 1e3).ToString("0.0", CultureInfo.InvariantCulture) + " kB"
+                : bytes + " B";
 
         internal static string Crop(string text, int max)
         {
