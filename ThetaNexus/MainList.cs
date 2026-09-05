@@ -7,6 +7,7 @@ using Spectre.Console.Rendering;
 using Color = Spectre.Console.Color;
 using ThetaNexus.Shared;
 using System.Diagnostics;
+using System.Collections.Specialized;
 
 namespace ThetaNexus
 {
@@ -29,6 +30,9 @@ namespace ThetaNexus
             var filter = string.Empty;
             var filtering = false;
 
+            (string Text, Models.Outcome Outcome)? notice = null;
+            var noticed = DateTime.UtcNow;
+
             while (true)
             {
                 using var cts = new CancellationTokenSource();
@@ -36,7 +40,7 @@ namespace ThetaNexus
                 var events = Task.CompletedTask;
                 var stats = Task.CompletedTask;
 
-                string? shell = null;
+                string[]? shell = null;
 
                 try
                 {
@@ -49,12 +53,13 @@ namespace ThetaNexus
                     var containers = await client.Containers.ListContainersAsync(new ContainersListParameters { All = true }, cts.Token);
 
                     IList<ImagesListResponse> images = [];
+                    IList<VolumeResponse> volumes = [];
 
                     stats = Task.Run(()
                         => ContainerStats.Watch(client, cts.Token), cts.Token);
 
                     var refreshed = DateTime.UtcNow;
-                    var stale = false;
+                    var stale = true;
                     var dirty = true;
 
                     events = Task.Run(async () =>
@@ -83,8 +88,15 @@ namespace ThetaNexus
                                     containers = await client.Containers.ListContainersAsync(new ContainersListParameters { All = true }, cts.Token);
                                     dirty = true;
 
-                                    if (section == (int)Models.MainListSections.Images)
-                                        images = await client.Images.ListImagesAsync(new ImagesListParameters(), cts.Token);
+                                    switch ((Models.MainListSections)section)
+                                    {
+                                        case Models.MainListSections.Images:
+                                            images = await client.Images.ListImagesAsync(new ImagesListParameters(), cts.Token);
+                                            break;
+                                        case Models.MainListSections.Volumes:
+                                            volumes = (await client.Volumes.ListAsync(cts.Token)).Volumes;
+                                            break;
+                                    }
                                 }
 
                                 IList<ContainerListResponse> matching = filter.Length == 0
@@ -120,14 +132,19 @@ namespace ThetaNexus
                                         .Select(x => (group.Key, (ContainerListResponse?)x)));
                                 }
 
-                                IList<ImagesListResponse> shown = filter.Length == 0
-                                    ? images
-                                    : [.. images.Where(x => (x.RepoTags ?? []).Any(t => t.Contains(filter, StringComparison.OrdinalIgnoreCase)))];
+                                IList<ImagesListResponse> shown = [.. images
+                                    .Where(x => filter.Length == 0 || (x.RepoTags ?? []).Any(t => t.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+                                    .OrderBy(x => (x.RepoTags ?? []).FirstOrDefault() ?? string.Empty, StringComparer.Ordinal)];
+
+                                IList<VolumeResponse> visible = [.. volumes
+                                    .Where(x => filter.Length == 0 || x.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                                    .OrderBy(x => x.Name, StringComparer.Ordinal)];
 
                                 var count = (Models.MainListSections)section switch
                                 {
                                     Models.MainListSections.Containers => rows.Count,
                                     Models.MainListSections.Images => shown.Count,
+                                    Models.MainListSections.Volumes => visible.Count,
                                     _ => 0
                                 };
 
@@ -136,6 +153,9 @@ namespace ThetaNexus
                                 if (Console.KeyAvailable)
                                 {
                                     var key = Console.ReadKey(intercept: true);
+
+                                    notice = null;
+                                    noticed = DateTime.UtcNow;
 
                                     if (filtering)
                                     {
@@ -157,41 +177,33 @@ namespace ThetaNexus
                                         case var _ when key.KeyChar == '/':
                                             filtering = true;
                                             break;
-
                                         case ConsoleKey.UpArrow:
                                             selected = Math.Max(0, selected - 1);
                                             break;
-
                                         case ConsoleKey.DownArrow:
                                             selected = Math.Min(count - 1, selected + 1);
                                             break;
-
                                         case ConsoleKey.LeftArrow:
                                             section = (section + sections.Length - 1) % sections.Length;
                                             selected = 0;
                                             stale = true;
                                             break;
-
                                         case ConsoleKey.RightArrow:
                                             section = (section + 1) % sections.Length;
                                             selected = 0;
                                             stale = true;
                                             break;
-
                                         case >= ConsoleKey.D1 and <= ConsoleKey.D5:
                                             section = key.Key - ConsoleKey.D1;
                                             selected = 0;
                                             stale = true;
                                             break;
-
                                         case ConsoleKey.Tab when key.Modifiers.HasFlag(ConsoleModifiers.Shift):
                                             descending = !descending;
                                             break;
-
                                         case ConsoleKey.Tab:
                                             sortBy = (sortBy + 1) % sorts.Length;
                                             break;
-
                                         case ConsoleKey.C when section == (int)Models.MainListSections.Containers && rows.Count > 0:
                                             var toToggle = rows[selected].Project;
 
@@ -201,14 +213,11 @@ namespace ThetaNexus
                                             collapsed.Add(toToggle);
                                             selected = rows.FindIndex(x => x.Project == toToggle && x.Container is null);
                                             break;
-
                                         case ConsoleKey.Spacebar when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { } target:
                                             await ContainerActions.StartStop(client, target, cts.Token);
                                             break;
-
                                         case ConsoleKey.Q:
                                             return;
-
                                         case ConsoleKey.Enter when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { } open:
                                             shell = await Details.Display(client, ctx, open, cts.Token);
 
@@ -216,14 +225,33 @@ namespace ThetaNexus
                                                 return;
 
                                             break;
-
                                         case ConsoleKey.Enter when section == (int)Models.MainListSections.Images && shown.Count > 0:
                                             await ImageInfo.Display(client, ctx, shown[selected], cts.Token);
+                                            break;
+                                        case ConsoleKey.Enter when section == (int)Models.MainListSections.Volumes && visible.Count > 0:
+                                            shell = await VolumeInfo.Display(client, ctx, visible[selected], cts.Token);
+
+                                            if (shell != null)
+                                                return;
+
                                             break;
                                     }
 
                                     dirty = true;
                                     continue;
+                                }
+
+                                if (ContainerActions.Notice() is { } reported)
+                                {
+                                    notice = reported;
+                                    noticed = DateTime.UtcNow;
+                                    dirty = true;
+                                }
+
+                                if (notice != null && DateTime.UtcNow - noticed > TimeSpan.FromSeconds(4))
+                                {
+                                    notice = null;
+                                    dirty = true;
                                 }
 
                                 if (!dirty)
@@ -237,23 +265,7 @@ namespace ThetaNexus
                                 var width = AnsiConsole.Profile.Width;
                                 var height = Console.WindowHeight;
                                 var body = width - 4;
-
-                                var showImage = width >= 70;
-                                var showPorts = width >= 90;
-                                var showCpu = width >= 90;
-                                var showMem = width >= 110;
-
-                                var nameWidth = Math.Clamp(containers.Count == 0 ? 14 : containers.Max(x => x.Names[0].TrimStart('/').Length) + 2, 14, 28);
-                                var stateWidth = 16;
-                                var portsWidth = showPorts ? 15 : 0;
-                                var cpuWidth = showCpu ? 8 : 0;
-                                var memWidth = showMem ? 12 : 0;
-                                var upWidth = 8;
-                                var imageWidth = showImage ? Math.Max(10, body - 2 - nameWidth - stateWidth - portsWidth - cpuWidth - memWidth - upWidth) : 0;
-
-                                var bodyHeight = Math.Max(1, height - 9);
-                                var first = selected / bodyHeight * bodyHeight;
-                                var last = Math.Min(first + bodyHeight, rows.Count);
+                                var bodyHeight = Math.Max(1, height - 9 - (notice == null ? 0 : 1));
 
                                 var page = new List<IRenderable>
                                 {
@@ -282,6 +294,22 @@ namespace ThetaNexus
                                 {
                                     case Models.MainListSections.Containers:
                                         {
+                                            var showImage = width >= 70;
+                                            var showPorts = width >= 90;
+                                            var showCpu = width >= 90;
+                                            var showMem = width >= 110;
+
+                                            var nameWidth = Math.Clamp(containers.Count == 0 ? 14 : containers.Max(x => x.Names[0].TrimStart('/').Length) + 2, 14, 28);
+                                            var stateWidth = 16;
+                                            var portsWidth = showPorts ? 15 : 0;
+                                            var cpuWidth = showCpu ? 8 : 0;
+                                            var memWidth = showMem ? 12 : 0;
+                                            var upWidth = 8;
+                                            var imageWidth = showImage ? Math.Max(10, body - 2 - nameWidth - stateWidth - portsWidth - cpuWidth - memWidth - upWidth) : 0;
+
+                                            var first = selected / bodyHeight * bodyHeight;
+                                            var last = Math.Min(first + bodyHeight, rows.Count);
+
                                             var titles = new List<(string, Color?)> { ("  ", null) };
 
                                             for (int i = 0; i < sorts.Length; i++)
@@ -463,6 +491,72 @@ namespace ThetaNexus
 
                                             break;
                                         }
+                                    case Models.MainListSections.Volumes:
+                                        {
+                                            var showCreated = width >= 100;
+
+                                            var driverWidth = 10;
+                                            var createdWidth = showCreated ? 12 : 0;
+                                            var mountedWidth = 30;
+                                            var nameWidth = Math.Max(16, body - 2 - driverWidth - mountedWidth - createdWidth);
+
+                                            page.Add(new Markup(UI.Compose(
+                                                [
+                                                    ("  ", null),
+                                                    ("NAME".PadRight(nameWidth), Color.Grey35),
+                                                    ("DRIVER".PadRight(driverWidth), Color.Grey35),
+                                                    ("MOUNTED BY".PadRight(mountedWidth), Color.Grey35),
+                                                    (showCreated ? "CREATED".PadRight(createdWidth) : string.Empty, Color.Grey35)
+                                                ], body, false)));
+
+                                            if (visible.Count == 0)
+                                            {
+                                                page.Add(new Markup($"[{Color.Grey}]No volumes on this engine.[/]"));
+
+                                                drawn = 1;
+                                                break;
+                                            }
+
+                                            var from = selected / bodyHeight * bodyHeight;
+                                            var to = Math.Min(from + bodyHeight, visible.Count);
+
+                                            for (int i = from; i < to; i++)
+                                            {
+                                                var volume = visible[i];
+
+                                                var mounted = containers
+                                                    .Where(x => (x.Mounts ?? []).Any(m => m.Name == volume.Name))
+                                                    .Select(x => x.Names[0].TrimStart('/'))
+                                                    .ToList();
+
+                                                var age = DateTime.TryParse(volume.CreatedAt, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var created)
+                                                    ? DateTime.UtcNow - created.ToUniversalTime()
+                                                    : TimeSpan.Zero;
+
+                                                var cells = new List<(string, Color?)>
+                                                {
+                                                    ("  ", null),
+                                                    (UI.Crop(volume.Name, nameWidth - 1).PadRight(nameWidth), Color.Yellow),
+                                                    (UI.Crop(volume.Driver, driverWidth - 1).PadRight(driverWidth), Color.Grey35),
+                                                    (UI.Crop(mounted.Count > 0 ? string.Join(", ", mounted) : "–", mountedWidth - 1).PadRight(mountedWidth), mounted.Count > 0 ? Color.SteelBlue1 : Color.Grey35)
+                                                };
+
+                                                if (showCreated)
+                                                    cells.Add(((age == TimeSpan.Zero
+                                                        ? "–"
+                                                        : age.TotalHours < 1
+                                                            ? $"{(int)age.TotalMinutes}m"
+                                                            : age.TotalDays < 1
+                                                                ? $"{(int)age.TotalHours}h"
+                                                                : $"{(int)age.TotalDays}d").PadRight(createdWidth), Color.CadetBlue));
+
+                                                page.Add(new Markup(UI.Compose([.. cells], body, i == selected)));
+
+                                                drawn++;
+                                            }
+
+                                            break;
+                                        }
                                     default:
                                         {
                                             page.Add(new Text(string.Empty));
@@ -475,6 +569,9 @@ namespace ThetaNexus
 
                                 for (int i = drawn; i < bodyHeight; i++)
                                     page.Add(new Text(string.Empty));
+
+                                if (notice is { } toast)
+                                    page.Add(new Markup(UI.Toast(toast, body)));
 
                                 page.Add(new Rule { Style = new Style(Color.Grey35) });
                                 page.Add(new Markup(UI.Spread(
@@ -495,23 +592,32 @@ namespace ThetaNexus
                             }
                         });
 
-                    await cts.CancelAsync();
+                    await AnsiConsole.Status()
+                        .Spinner(Spinner.Known.Dots)
+                        .StartAsync("closing background work…", async _ =>
+                        {
+                            await cts.CancelAsync();
 
-                    await events;
+                            await events;
 
-                    await stats;
+                            await stats;
+                        });
 
                     AnsiConsole.Clear();
 
-                    if (shell is { } id)
+                    if (shell is { } run)
                     {
                         Console.CursorVisible = true;
 
-                        using var child = Process.Start(new ProcessStartInfo("docker")
-                        {
-                            ArgumentList = { "exec", "-it", id, "sh", "-c", "command -v bash >/dev/null && exec bash || exec sh" },
-                            UseShellExecute = false
-                        });
+                        AnsiConsole.MarkupLine($"[{Color.Grey35}]docker {Markup.Escape(string.Join(" ", run))}[/]");
+                        AnsiConsole.WriteLine();
+
+                        var info = new ProcessStartInfo("docker") { UseShellExecute = false };
+
+                        foreach (var arg in run)
+                            info.ArgumentList.Add(arg);
+
+                        using var child = Process.Start(info);
 
                         if (child != null)
                             // ReSharper disable once MethodSupportsCancellation

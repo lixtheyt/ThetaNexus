@@ -26,6 +26,13 @@ namespace ThetaNexus.Shared
             Age
         }
 
+        internal enum Outcome
+        {
+            Succeeded,
+            Warned,
+            Failed
+        }
+
         internal enum DetailsTabs
         {
             Overview,

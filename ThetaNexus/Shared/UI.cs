@@ -89,6 +89,23 @@ namespace ThetaNexus.Shared
                 : bytes >= 1_000 ? (bytes / 1e3).ToString("0.0", CultureInfo.InvariantCulture) + " kB"
                 : bytes + " B";
 
+        internal static string Toast((string Text, Models.Outcome Outcome) notice, int body)
+        {
+            var (band, glyph, colour) = notice.Outcome switch
+            {
+                Models.Outcome.Failed => ("#3a1014", "✗  ", Color.Red1),
+                Models.Outcome.Warned => ("#3a2a10", "!  ", Color.Orange1),
+                _ => ("#12301a", "●  ", Color.Green3_1)
+            };
+
+            return $"[on {band}]{Compose(
+            [
+                ("  ", null),
+                (glyph, colour),
+                (Crop(notice.Text, body - 5), colour)
+            ], body, false)}[/]";
+        }
+
         internal static string Crop(string text, int max)
         {
             var flat = string.Concat(text.Select(x => char.IsControl(x) ? ' ' : x));
