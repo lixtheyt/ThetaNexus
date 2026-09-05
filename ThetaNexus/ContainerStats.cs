@@ -61,7 +61,6 @@ namespace ThetaNexus
                     }
                     catch (Exception)
                     {
-                        _stats.TryRemove(id, out _);
                     }
                 }
 

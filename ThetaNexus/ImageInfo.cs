@@ -8,6 +8,7 @@ using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Text;
 using ThetaNexus.Shared;
+using Color = Spectre.Console.Color;
 
 namespace ThetaNexus
 {
@@ -27,7 +28,8 @@ namespace ThetaNexus
 
             var dirty = true;
 
-            (string Text, Color Color)? notice = null;
+            (string Text, Models.Outcome Outcome)? notice = null;
+            var noticed = DateTime.UtcNow;
             string? confirm = null;
 
             var offset = 0;
@@ -39,6 +41,7 @@ namespace ThetaNexus
                 {
                     var key = Console.ReadKey(intercept: true);
                     notice = null;
+                    noticed = DateTime.UtcNow;
 
                     if (confirm != null)
                     {
@@ -53,7 +56,7 @@ namespace ThetaNexus
                             }
                             catch (DockerApiException ex)
                             {
-                                notice = (ex.Message, Color.Red3);
+                                notice = (ex.Message, Models.Outcome.Failed);
                             }
                         }
 
@@ -105,7 +108,7 @@ namespace ThetaNexus
                                     await clip.WaitForExitAsync(token);
                                 }
 
-                                notice = ("id copied", Color.Green3_1);
+                                notice = ("id copied", Models.Outcome.Succeeded);
 
                                 break;
                             }
@@ -113,6 +116,12 @@ namespace ThetaNexus
 
                     dirty = true;
                     continue;
+                }
+
+                if (notice is not null && DateTime.UtcNow - noticed > TimeSpan.FromSeconds(4))
+                {
+                    notice = null;
+                    dirty = true;
                 }
 
                 if (!dirty)
@@ -126,7 +135,7 @@ namespace ThetaNexus
                 var width = AnsiConsole.Profile.Width;
                 var height = Console.WindowHeight;
                 var body = width - 4;
-                var bodyHeight = Math.Max(1, height - 9);
+                var bodyHeight = Math.Max(1, height - 9 - (notice is null ? 0 : 1));
 
                 var page = new List<IRenderable>
                 {
@@ -142,7 +151,7 @@ namespace ThetaNexus
                         .AddColumn(new GridColumn { Alignment = Justify.Right })
                         .AddRow(
                             $"[bold {Color.SteelBlue1}]IMAGE[/]",
-                            $"[{Color.Grey35}]{UI.Size(inspect.Size)}[/] [{Color.Grey35}]·[/] [{Color.Grey35}]{inspect.RootFS.Layers.Count} layers[/]{(notice is { } n ? $" [{Color.Grey35}]·[/] [{n.Color}]{Markup.Escape(UI.Crop(n.Text, 60))}[/]" : string.Empty)}"),
+                            $"[{Color.Grey35}]{UI.Size(inspect.Size)}[/] [{Color.Grey35}]·[/] [{Color.Grey35}]{inspect.RootFS.Layers.Count} layers[/]"),
                     new Rule { Style = new Style(Color.Grey35) },
                     new Text(string.Empty)
                 };
@@ -209,6 +218,9 @@ namespace ThetaNexus
 
                 for (int i = drawn; i < bodyHeight; i++)
                     page.Add(new Text(string.Empty));
+
+                if (notice is { } toast)
+                    page.Add(new Markup(UI.Toast(toast, body)));
 
                 page.Add(new Rule { Style = new Style(Color.Grey35) });
                 page.Add(new Markup(confirm is { } question
