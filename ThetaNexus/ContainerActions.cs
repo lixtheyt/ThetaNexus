@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using ThetaNexus.Shared;
 using System.Globalization;
-
 using Docker.DotNet;
 using Docker.DotNet.Models;
 
@@ -9,6 +8,8 @@ namespace ThetaNexus
 {
     internal static class ContainerActions
     {
+        private const int KillAfterSeconds = 10;
+
         private static readonly ConcurrentDictionary<string, string> _pending = new();
 
         private static (string Text, Models.Outcome Outcome)? _notice;
@@ -22,9 +23,7 @@ namespace ThetaNexus
             return notice;
         }
 
-        internal static string? Pending(string id) => _pending.TryGetValue(id, out var verb)
-            ? verb
-            : null;
+        internal static string? Pending(string id) => _pending.GetValueOrDefault(id);
 
         internal static async Task StartStop(DockerClient client, ContainerListResponse container, CancellationToken token)
         {
@@ -40,7 +39,7 @@ namespace ThetaNexus
                 var started = DateTime.UtcNow;
 
                 _ = client.Containers
-                    .StopContainerAsync(container.ID, new ContainerStopParameters { WaitBeforeKillSeconds = 10 }, token)
+                    .StopContainerAsync(container.ID, new ContainerStopParameters { WaitBeforeKillSeconds = KillAfterSeconds }, token)
                     .ContinueWith(stop =>
                     {
                         _pending.TryRemove(container.ID, out _);
@@ -52,7 +51,7 @@ namespace ThetaNexus
 
                         _notice = stop.Exception?.GetBaseException() is { } failure
                             ? ($"{name} could not stop: {failure.Message}", Models.Outcome.Failed)
-                            : took >= 10
+                            : took >= KillAfterSeconds
                                 ? ($"{name} killed after {took.ToString("0.0", CultureInfo.InvariantCulture)}s, it ignored SIGTERM", Models.Outcome.Warned)
                                 : ($"{name} stopped in {took.ToString("0.0", CultureInfo.InvariantCulture)}s", Models.Outcome.Succeeded);
                     }, TaskScheduler.Default);

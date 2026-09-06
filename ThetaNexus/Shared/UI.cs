@@ -1,14 +1,11 @@
 using Docker.DotNet.Models;
 using Spectre.Console;
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
 using Color = Spectre.Console.Color;
 
 namespace ThetaNexus.Shared
 {
-    internal class UI
+    internal static class UI
     {
         internal static (string Text, Color Color) Glyph(ContainerListResponse container)
         {
@@ -38,9 +35,9 @@ namespace ThetaNexus.Shared
             {
                 { Paused: true } => ("▎▎ paused", Color.SkyBlue1),
                 { Restarting: true } => ("◌  restarting", Color.Yellow),
-                { Running: true } when state.Health?.Status == "unhealthy" => ("●  unhealthy", Color.Orange1),
-                { Running: true } when state.Health?.Status == "starting" => ("●  starting", Color.Yellow),
-                { Running: true } when state.Health?.Status == "healthy" => ("●  healthy", Color.Green3_1),
+                { Running: true, Health.Status: "unhealthy" } => ("●  unhealthy", Color.Orange1),
+                { Running: true, Health.Status: "starting" } => ("●  starting", Color.Yellow),
+                { Running: true, Health.Status: "healthy" } => ("●  healthy", Color.Green3_1),
                 { Running: true } => ("●  running", Color.Green3_1),
                 { Status: "created" } => ("○  created", Color.Grey),
                 _ => ($"✗  exited ({state.ExitCode})", state.ExitCode == 0 ? Color.Grey : Color.Red3)
@@ -70,11 +67,11 @@ namespace ThetaNexus.Shared
 
             for (int i = 0; i < items.Length; i++)
             {
-                var (text, Color) = items[i];
+                var (text, color) = items[i];
 
-                markup += Color is null
+                markup += color is null
                     ? Markup.Escape(text)
-                    : $"[{Color.Value.ToMarkup()}]{Markup.Escape(text)}[/]";
+                    : $"[{color.Value.ToMarkup()}]{Markup.Escape(text)}[/]";
 
                 if (i < items.Length - 1)
                     markup += new string(' ', space / gaps + (i < space % gaps ? 1 : 0));

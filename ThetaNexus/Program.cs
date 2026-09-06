@@ -4,9 +4,9 @@ using System.Text;
 
 namespace ThetaNexus
 {
-    internal class Program
+    internal static class Program
     {
-        static async Task Main(string[] args)
+        private static async Task Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
             Console.CursorVisible = false;
@@ -20,8 +20,8 @@ namespace ThetaNexus
 
             var assembly = Assembly.GetExecutingAssembly();
 
-            using var stream = assembly.GetManifestResourceStream("ThetaNexus.Figlet_Fonts.Bloody.flf")
-                ?? throw new InvalidOperationException($"Bloody.flf is not in the assembly. Available: {string.Join(", ", assembly.GetManifestResourceNames())}");
+            await using var stream = assembly.GetManifestResourceStream("ThetaNexus.Figlet_Fonts.Bloody.flf")
+                                     ?? throw new InvalidOperationException($"Bloody.flf is not in the assembly. Available: {string.Join(", ", assembly.GetManifestResourceNames())}");
 
             var font = FigletFont.Load(stream);
 

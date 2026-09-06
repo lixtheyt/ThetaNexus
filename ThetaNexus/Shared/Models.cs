@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace ThetaNexus.Shared
+﻿namespace ThetaNexus.Shared
 {
-    internal class Models
+    internal static class Models
     {
         internal enum MainListSections
         {
@@ -40,6 +36,14 @@ namespace ThetaNexus.Shared
             Mounts,
             Networks,
             Health
+        }
+
+        internal enum ImageInfoTabs
+        {
+            Overview,
+            Layers,
+            Env,
+            Labels
         }
 
         internal enum MainListImageShorts

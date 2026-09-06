@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-
 using Docker.DotNet;
 using Docker.DotNet.Models;
 
@@ -13,13 +12,11 @@ namespace ThetaNexus
 
         private static string[] _tracked = [];
 
-        internal static (double? Cpu, long Memory, long Limit)? Stats(string id) => _stats.TryGetValue(id, out var stats)
-            ? stats
-            : null;
+        internal static (double? Cpu, long Memory, long Limit)? Stats(string id) => _stats.GetValueOrDefault(id);
 
         internal static void Track(IEnumerable<string> ids)
         {
-            _tracked = [.. ids];
+            _tracked = [..ids];
 
             foreach (var gone in _stats.Keys.Except(_tracked))
             {
@@ -61,6 +58,7 @@ namespace ThetaNexus
                     }
                     catch (Exception)
                     {
+                        // ignored
                     }
                 }
 

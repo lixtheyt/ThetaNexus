@@ -1,23 +1,17 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
-
 using Spectre.Console;
 using Spectre.Console.Rendering;
-using System.Collections;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Globalization;
-using System.Reflection.Metadata.Ecma335;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using ThetaNexus.Shared;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 using Color = Spectre.Console.Color;
 
 namespace ThetaNexus
 {
-    internal static class Details
+    internal static class ContainerDetails
     {
         internal static async Task<string[]?> Display(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
         {
@@ -122,7 +116,7 @@ namespace ThetaNexus
                             $"[{Color.SteelBlue1.ToMarkup()}]{Markup.Escape(name)}[/]   [{Color.MediumPurple2.ToMarkup()}]{Markup.Escape(container.Image)}[/] [{Color.Grey35.ToMarkup()}]·[/] [{Color.DarkOrange3.ToMarkup()}]{id}[/]",
                             $"[{color.ToMarkup()}]{Markup.Escape(glyph.Replace("  ", " "))}[/]"),
                     new Rule { Style = new Style(Color.Grey35) },
-                    new Markup(UI.Spread([.. tabs.Select((x, i) => (i == section ? x.ToUpperInvariant() : x, i == section ? (Color?)Color.SteelBlue1 : Color.Grey35))], body)),
+                    new Markup(UI.Spread([..tabs.Select((x, i) => (i == section ? x.ToUpperInvariant() : x, i == section ? (Color?)Color.SteelBlue1 : Color.Grey35))], body)),
                     new Rule { Style = new Style(Color.Grey35) },
                     new Text(string.Empty)
                 };
@@ -280,7 +274,7 @@ namespace ThetaNexus
                 for (int i = grid.Rows.Count + extra; i < bodyHeight; i++)
                     page.Add(new Text(string.Empty));
 
-                page.Add(new Rule { Style = new Style(Color.Grey) });
+                page.Add(new Rule { Style = new Style(Color.Grey35) });
                 page.Add(new Markup(
                     section == (int)Models.DetailsTabs.Env
                     ? UI.Spread(
@@ -312,7 +306,7 @@ namespace ThetaNexus
 
         private static async Task DisplayStats(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
         {
-            var latest = (ContainerStatsResponse?)null;
+            ContainerStatsResponse? latest = null;
             var dirty = true;
 
             _ = client.Containers.GetContainerStatsAsync(container.ID,
@@ -365,7 +359,7 @@ namespace ThetaNexus
 
                 if (!dirty)
                 {
-                    await Task.Delay(50);
+                    await Task.Delay(50, token);
                     continue;
                 }
 

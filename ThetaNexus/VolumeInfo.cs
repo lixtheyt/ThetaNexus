@@ -1,16 +1,11 @@
 ﻿using Docker.DotNet;
 using Docker.DotNet.Models;
 using Spectre.Console;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using Color = Spectre.Console.Color;
-using System.Text;
-using System.Collections.Specialized;
 using System.Globalization;
 using Spectre.Console.Rendering;
 using ThetaNexus.Shared;
-using System.ComponentModel;
 
 namespace ThetaNexus
 {
@@ -30,14 +25,14 @@ namespace ThetaNexus
             });
 
             var size = df == null
-                ? "-"
+                ? "–"
                 : (await df.StandardOutput.ReadToEndAsync(token)).Trim();
 
             if (df != null)
                 await df.WaitForExitAsync(token);
 
             if (size.Length == 0)
-                size = "-";
+                size = "–";
 
             var dirty = true;
 
@@ -64,7 +59,7 @@ namespace ThetaNexus
                             {
                                 if (mounts.Count > 0)
                                 {
-                                    notice = ("volume is mounted by containers, cannot remove", Models.Outcome.Failed);
+                                    notice = ("volume is mounted by containers, cannot delete", Models.Outcome.Failed);
 
                                     typed = null;
                                     dirty = true;
@@ -187,7 +182,7 @@ namespace ThetaNexus
                         .AddColumn(new GridColumn { Alignment = Justify.Right })
                         .AddRow(
                             $"[bold {Color.SteelBlue1}]VOLUME[/]",
-                            $"[{Color.Grey35}]{size}[/] [{Color.Grey35}]·[/] [{Color.Grey35}]created {(age == TimeSpan.Zero ? "-" : age.TotalDays < 1 ? $"{(int)age.TotalHours}h" : $"{(int)age.TotalDays}d")} ago[/]"),
+                            $"[{Color.Grey35}]{size}[/] [{Color.Grey35}]·[/] [{Color.Grey35}]created {(age == TimeSpan.Zero ? "–" : age.TotalDays < 1 ? $"{(int)age.TotalHours}h" : $"{(int)age.TotalDays}d")} ago[/]"),
                     new Rule { Style = new Style(Color.Grey35) },
                     new Text(string.Empty)
                 };
@@ -200,11 +195,11 @@ namespace ThetaNexus
                     .AddRow(new Markup($"[{Color.Grey}]Scope[/]"), new Text(volume.Scope))
                     .AddRow(new Markup($"[{Color.Grey}]Mountpoint[/]"), new Text(UI.Crop(volume.Mountpoint, body - 16)))
                     .AddRow(new Markup($"[{Color.Grey}]Created[/]"), new Markup(age == TimeSpan.Zero
-                        ? "-"
+                        ? "–"
                         : $"[{Color.CadetBlue}]{created.ToLocalTime():G}[/]"))
                     .AddRow(new Markup($"[{Color.Grey}]Project[/]"), new Markup(volume.Labels != null && volume.Labels.TryGetValue("com.docker.compose.project", out var project)
                         ? $"[{Color.Khaki1}]{Markup.Escape(project)}[/]"
-                        : "-"));
+                        : "–"));
 
                 page.Add(grid);
 
@@ -249,14 +244,14 @@ namespace ThetaNexus
 
                 page.Add(new Rule { Style = new Style(Color.Grey35) });
                 page.Add(new Markup(typed != null
-                    ? UI.Spread([($"Type the volume name to remove it permanently: {typed}_", Color.Grey)], body)
+                    ? UI.Spread([($"Type the volume name to delete it permanently: {typed}_", Color.Grey)], body)
                     : UI.Spread(
                     [
                         ("ESC back", Color.Grey),
                         ("⏎ raw JSON", Color.Grey),
                         ("y copy name", Color.Grey),
                         ("b browse", Color.Grey),
-                        ("d remove", Color.Grey)
+                        ("d delete", Color.Grey)
                     ], body)));
 
                 ctx.UpdateTarget(new Padder(new Rows(page), new Padding(2, 1, 2, 0)));
