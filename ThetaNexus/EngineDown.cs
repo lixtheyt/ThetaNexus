@@ -15,7 +15,7 @@ namespace ThetaNexus
 
             var cause = (ex as DockerApiException ?? root as DockerApiException, root) switch
             {
-                (DockerApiException api, _) => $"The engine answered with {(int)api.StatusCode} {api.StatusCode}, so it is running but refused the request. This usually means the client is newer than the engine or that the engine is paused.",
+                ({ } api, _) => $"The engine answered with {(int)api.StatusCode} {api.StatusCode}, so it is running but refused the request. This usually means the client is newer than the engine or that the engine is paused.",
                 (_, TimeoutException) => "The named pipe does not exist, which means Docker Desktop is not running. Start it and this screen moves on by itself.",
                 (_, OperationCanceledException) => "The pipe is there but the engine did not answer in time. Docker Desktop is most likely still starting, or its WSL backend is down.",
                 _ => "The engine could not be reached, and the reason is not one this screen recognises. The red line above is the raw text from the library."

@@ -1,10 +1,6 @@
-﻿using Docker.DotNet.Models;
-using Spectre.Console;
+﻿using Spectre.Console;
 using Spectre.Console.Rendering;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
 using ThetaNexus.Shared;
 
 namespace ThetaNexus
@@ -33,7 +29,7 @@ namespace ThetaNexus
 
             string[] lines = string.IsNullOrWhiteSpace(json)
                 ? ["docker returned nothing. The object is most likely gone."]
-                : [.. json.Split('\n').Select(x => x.TrimEnd('\r'))];
+                : [..json.Split('\n').Select(x => x.TrimEnd('\r'))];
 
             var captured = DateTime.Now;
 
