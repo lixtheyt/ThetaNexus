@@ -48,7 +48,7 @@ namespace ThetaNexus
                             }
                             catch (DockerApiException ex)
                             {
-                                notice = (ex.Message, Models.Outcome.Failed);
+                                notice = (UI.Reason(ex), Models.Outcome.Failed);
                             }
                         }
 

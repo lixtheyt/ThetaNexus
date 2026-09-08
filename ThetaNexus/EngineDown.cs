@@ -1,4 +1,4 @@
-using Docker.DotNet;
+﻿using Docker.DotNet;
 using Spectre.Console;
 using Color = Spectre.Console.Color;
 
@@ -10,7 +10,7 @@ namespace ThetaNexus
         {
             var root = ex;
 
-            while (root.InnerException is not null)
+            while (root.InnerException != null)
                 root = root.InnerException;
 
             var cause = (ex as DockerApiException ?? root as DockerApiException, root) switch

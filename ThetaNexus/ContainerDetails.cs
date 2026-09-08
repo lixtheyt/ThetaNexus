@@ -1,8 +1,9 @@
-using Docker.DotNet;
+﻿using Docker.DotNet;
 using Docker.DotNet.Models;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.Collections.Concurrent;
+using System.Collections.Specialized;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -23,17 +24,56 @@ namespace ThetaNexus
             var hidden = true;
             var dirty = true;
 
+            var menu = false;
+            var chosen = 0;
+            ConsoleKey? picked = null;
+
+            (string Text, Models.Outcome Outcome)? notice = null;
+            var noticed = DateTime.UtcNow;
+
             var inspect = await client.Containers.InspectContainerAsync(container.ID, token);
             var drivers = new Dictionary<string, string>();
             var refreshed = DateTime.UtcNow;
 
             while (true)
             {
+                var actions = ContainerActions.Applicable(container, inspect.State.Status);
+
+                if (menu && picked is { } want && Array.FindIndex(actions, x => x.Key == want) is var found && found >= 0)
+                    chosen = found;
+
+                chosen = Math.Clamp(chosen, 0, Math.Max(0, actions.Length - 1));
+
                 if (Console.KeyAvailable)
                 {
                     var key = Console.ReadKey(intercept: true);
 
-                    switch (key.Key)
+                    var pressed = key.Key;
+
+                    notice = null;
+                    noticed = DateTime.UtcNow;
+
+                    if (menu)
+                    {
+                        menu = key.Key is ConsoleKey.UpArrow or ConsoleKey.DownArrow;
+
+                        if (key.Key == ConsoleKey.UpArrow)
+                            chosen = Math.Max(0, chosen - 1);
+
+                        if (key.Key == ConsoleKey.DownArrow)
+                            chosen = Math.Min(actions.Length - 1, chosen + 1);
+
+                        picked = actions.Length > 0 ? actions[chosen].Key : null;
+
+                        dirty = true;
+
+                        if (menu || key.Key != ConsoleKey.Enter)
+                            continue;
+
+                        pressed = actions[chosen].Key;
+                    }
+
+                    switch (pressed)
                     {
                         case ConsoleKey.Escape:
                             return null;
@@ -64,6 +104,23 @@ namespace ThetaNexus
                                 $"[{Color.SteelBlue1}]{Markup.Escape(container.Names[0].TrimStart('/'))}[/]   [{Color.MediumPurple2}]{Markup.Escape(container.Image)}[/] [{Color.Grey35}]·[/] [{Color.DarkOrange3}]{container.ID[..12]}[/]",
                                 ["inspect", container.ID], token);
                             break;
+                        case ConsoleKey.R:
+                            await ContainerActions.Restart(client, container, token);
+                            break;
+                        case ConsoleKey.P:
+                            await ContainerActions.Pause(client, container, inspect.State.Status, token);
+                            break;
+                        case ConsoleKey.K:
+                            await ContainerActions.Kill(client, container, token);
+                            break;
+                        case ConsoleKey.Delete:
+                            await ContainerActions.Remove(client, container, token);
+                            break;
+                        case var _ when key.KeyChar == '.' && actions.Length > 0:
+                            menu = true;
+                            chosen = 0;
+                            picked = actions[0].Key;
+                            break;
                     }
 
                     dirty = true;
@@ -89,6 +146,19 @@ namespace ThetaNexus
                     }
                 }
 
+                if (ContainerActions.Notice() is { } reported)
+                {
+                    notice = reported;
+                    noticed = DateTime.UtcNow;
+                    dirty = true;
+                }
+
+                if (notice != null && DateTime.UtcNow - noticed > TimeSpan.FromSeconds(4))
+                {
+                    notice = null;
+                    dirty = true;
+                }
+
                 if (!dirty)
                 {
                     await Task.Delay(50, token);
@@ -100,6 +170,7 @@ namespace ThetaNexus
                 var width = AnsiConsole.Profile.Width;
                 var height = Console.WindowHeight;
                 var body = width - 4;
+                var bodyHeight = Math.Max(1, height - 9 - (notice == null ? 0 : 1));
 
                 var (glyph, color) = ContainerActions.Pending(container.ID) is { } verb
                     ? ($"◌  {verb}", Color.Yellow)
@@ -121,8 +192,6 @@ namespace ThetaNexus
                     new Text(string.Empty)
                 };
 
-                var bodyHeight = Math.Max(1, height - 9);
-
                 Grid grid = new();
 
                 var extra = 0;
@@ -132,14 +201,14 @@ namespace ThetaNexus
                     case Models.DetailsTabs.Overview:
                         {
                             var published = (inspect.NetworkSettings.Ports ?? new Dictionary<string, IList<PortBinding>>())
-                                .Where(x => x.Value is not null)
+                                .Where(x => x.Value != null)
                                 .SelectMany(x => x.Value.Select(b => $"[{Color.Aqua}]{b.HostIP}:{b.HostPort}[/] [{Color.Grey35}]→[/] [{Color.Aqua}]{x.Key}[/]"))
                                 .Distinct()
                                 .ToList();
 
                             var ports = published.Count > 0 ? string.Join("   ", published) : $"[{Color.Grey35}]–[/]";
 
-                            var project = inspect.Config.Labels is not null && inspect.Config.Labels.TryGetValue("com.docker.compose.project", out var compose)
+                            var project = inspect.Config.Labels != null && inspect.Config.Labels.TryGetValue("com.docker.compose.project", out var compose)
                                 ? $"[{Color.Khaki1}]{Markup.Escape(compose)}[/] [{Color.Grey35}]·[/] [{Color.Grey}]service[/] [{Color.Khaki1}]{Markup.Escape(inspect.Config.Labels.TryGetValue("com.docker.compose.service", out var service) ? service : "–")}[/]"
                                 : $"[{Color.Grey35}]no project[/]";
 
@@ -269,10 +338,29 @@ namespace ThetaNexus
                         }
                 }
 
-                page.Add(grid);
+                var drawn = grid.Rows.Count + extra;
 
-                for (int i = grid.Rows.Count + extra; i < bodyHeight; i++)
+                if (menu)
+                {
+                    page.Add(UI.Menu(
+                        [
+                            (name, Color.SteelBlue1),
+                            (glyph.Replace("  ", " "), color)
+                        ],
+                        [.. actions.Select(x => (x.Shown, x.Label))],
+                        chosen,
+                        body));
+
+                    drawn = actions.Length + 8;
+                }
+                else
+                    page.Add(grid);
+
+                for (int i = drawn; i < bodyHeight; i++)
                     page.Add(new Text(string.Empty));
+
+                if (notice is { } toast)
+                    page.Add(new Markup(UI.Toast(toast, body)));
 
                 page.Add(new Rule { Style = new Style(Color.Grey35) });
                 page.Add(new Markup(
@@ -286,6 +374,7 @@ namespace ThetaNexus
                         ("s stats", Color.Grey),
                         ("e shell", Color.Grey),
                         ("v values", Color.Grey),
+                        (". actions", Color.Grey),
                         ("␣ start/stop", Color.Grey)
                     ], body)
                     : UI.Spread(
@@ -296,6 +385,7 @@ namespace ThetaNexus
                         ("l logs", Color.Grey),
                         ("s stats", Color.Grey),
                         ("e shell", Color.Grey),
+                        (". actions", Color.Grey),
                         ("␣ start/stop", Color.Grey)
                     ], body)));
 
@@ -308,6 +398,9 @@ namespace ThetaNexus
         {
             ContainerStatsResponse? latest = null;
             var dirty = true;
+
+            (string Text, Models.Outcome Outcome)? notice = null;
+            var noticed = DateTime.UtcNow;
 
             _ = client.Containers.GetContainerStatsAsync(container.ID,
                 new ContainerStatsParameters { Stream = true },
@@ -331,6 +424,9 @@ namespace ThetaNexus
                 if (Console.KeyAvailable)
                 {
                     var key = Console.ReadKey(intercept: true);
+
+                    notice = null;
+                    noticed = DateTime.UtcNow;
 
                     switch (key.Key)
                     {
@@ -357,6 +453,19 @@ namespace ThetaNexus
                     dirty = true;
                 }
 
+                if (ContainerActions.Notice() is { } reported)
+                {
+                    notice = reported;
+                    noticed = DateTime.UtcNow;
+                    dirty = true;
+                }
+
+                if (notice != null && DateTime.UtcNow - noticed > TimeSpan.FromSeconds(4))
+                {
+                    notice = null;
+                    dirty = true;
+                }
+
                 if (!dirty)
                 {
                     await Task.Delay(50, token);
@@ -371,7 +480,7 @@ namespace ThetaNexus
 
                 var stats = latest;
 
-                if (stats is not null && stats.Read != seen)
+                if (stats != null && stats.Read != seen)
                 {
                     seen = stats.Read;
 
@@ -401,9 +510,9 @@ namespace ThetaNexus
                 var scale = history.Count > 0 ? Math.Max(1.0, history.Max()) : 1.0;
                 var spark = string.Concat(history.Select(x => "▁▂▃▄▅▆▇█"[(int)Math.Clamp(x / scale * 7, 0, 7)]));
 
-                var cache = stats?.MemoryStats.Stats is not null && stats.MemoryStats.Stats.TryGetValue("inactive_file", out var inactive) ? inactive : 0;
-                var used = stats is null ? 0 : (long)(stats.MemoryStats.Usage - cache);
-                var limit = stats is null ? 0 : (long)stats.MemoryStats.Limit;
+                var cache = stats?.MemoryStats.Stats != null && stats.MemoryStats.Stats.TryGetValue("inactive_file", out var inactive) ? inactive : 0;
+                var used = stats == null ? 0 : (long)(stats.MemoryStats.Usage - cache);
+                var limit = stats == null ? 0 : (long)stats.MemoryStats.Limit;
                 var share = limit > 0 ? Math.Clamp(used / (double)limit, 0, 1) : 0;
                 var filled = (int)Math.Round(30 * share);
 
@@ -411,7 +520,7 @@ namespace ThetaNexus
                     ? ($"◌  {verb}", Color.Yellow)
                     : UI.Glyph(inspect);
 
-                string Rate(double? bytes) => bytes is null ? "–" : bytes < 1024 ? $"{bytes:0} B/s" : $"{bytes / 1024:0.0} kB/s";
+                string Rate(double? bytes) => bytes == null ? "–" : bytes < 1024 ? $"{bytes:0} B/s" : $"{bytes / 1024:0.0} kB/s";
 
                 var page = new List<IRenderable>
                 {
@@ -432,7 +541,7 @@ namespace ThetaNexus
                     new Markup(UI.Compose(
                     [
                         ("CPU".PadRight(8), Color.Grey),
-                        ((cpu is null ? "–" : $"{cpu:0.0}%").PadRight(9), Color.Grey),
+                        ((cpu == null ? "–" : $"{cpu:0.0}%").PadRight(9), Color.Grey),
                         (spark.PadRight(42), Color.Green3_1)
                     ], body, false)),
 
@@ -460,8 +569,11 @@ namespace ThetaNexus
                     ], body, false))
                 };
 
-                for (int i = page.Count; i < height - 4; i++)
+                for (int i = page.Count; i < height - 4 - (notice == null ? 0 : 1); i++)
                     page.Add(new Text(string.Empty));
+
+                if (notice is { } toast)
+                    page.Add(new Markup(UI.Toast(toast, body)));
 
                 page.Add(new Rule { Style = new Style(Color.Grey35) });
                 page.Add(new Markup(UI.Spread(

@@ -74,7 +74,7 @@ namespace ThetaNexus
                             }
                             catch (DockerApiException ex)
                             {
-                                notice = (ex.Message, Models.Outcome.Failed);
+                                notice = (UI.Reason(ex), Models.Outcome.Failed);
                             }
                         }
                         else if (key.Key == ConsoleKey.Backspace)
@@ -105,12 +105,12 @@ namespace ThetaNexus
                                 if (!untag || (inspect.RepoTags?.Count ?? 0) <= 1)
                                     return null;
 
-                                notice = ("tag removed", Models.Outcome.Succeeded);
+                                notice = ("tag deleted", Models.Outcome.Succeeded);
                                 reload = true;
                             }
                             catch (DockerApiException ex)
                             {
-                                notice = (ex.Message, Models.Outcome.Failed);
+                                notice = (UI.Reason(ex), Models.Outcome.Failed);
                             }
                         }
 
@@ -177,7 +177,7 @@ namespace ThetaNexus
                                     UseShellExecute = false
                                 });
 
-                                if (clip is not null)
+                                if (clip != null)
                                 {
                                     await clip.StandardInput.WriteAsync(inspect.ID);
 
@@ -196,7 +196,7 @@ namespace ThetaNexus
                     continue;
                 }
 
-                if (notice is not null && DateTime.UtcNow - noticed > TimeSpan.FromSeconds(4))
+                if (notice != null && DateTime.UtcNow - noticed > TimeSpan.FromSeconds(4))
                 {
                     notice = null;
                     dirty = true;
@@ -221,7 +221,7 @@ namespace ThetaNexus
                 var width = AnsiConsole.Profile.Width;
                 var height = Console.WindowHeight;
                 var body = width - 4;
-                var bodyHeight = Math.Max(1, height - 9 - (notice is null ? 0 : 1));
+                var bodyHeight = Math.Max(1, height - 9 - (notice == null ? 0 : 1));
 
                 var tagged = (inspect.RepoTags ?? []).FirstOrDefault() ?? "<none>:<none>";
                 var colon = tagged.LastIndexOf(':');

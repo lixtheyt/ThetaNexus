@@ -59,7 +59,7 @@ namespace ThetaNexus
                             {
                                 if (mounts.Count > 0)
                                 {
-                                    notice = ("volume is mounted by containers, cannot delete", Models.Outcome.Failed);
+                                    notice = ("volume is mounted by containers, cannot remove", Models.Outcome.Failed);
 
                                     typed = null;
                                     dirty = true;
@@ -75,7 +75,7 @@ namespace ThetaNexus
                                 }
                                 catch (DockerApiException ex)
                                 {
-                                    notice = (ex.Message, Models.Outcome.Failed);
+                                    notice = (UI.Reason(ex), Models.Outcome.Failed);
                                 }
                             }
                             else
@@ -143,7 +143,7 @@ namespace ThetaNexus
                     continue;
                 }
 
-                if (notice is not null && DateTime.UtcNow - noticed > TimeSpan.FromSeconds(4))
+                if (notice != null && DateTime.UtcNow - noticed > TimeSpan.FromSeconds(4))
                 {
                     notice = null;
                     dirty = true;
@@ -160,7 +160,7 @@ namespace ThetaNexus
                 var width = AnsiConsole.Profile.Width;
                 var height = Console.WindowHeight;
                 var body = width - 4;
-                var bodyHeight = Math.Max(1, height - 9 - (notice is null ? 0 : 1));
+                var bodyHeight = Math.Max(1, height - 9 - (notice == null ? 0 : 1));
 
                 var drawn = 0;
 
@@ -244,14 +244,14 @@ namespace ThetaNexus
 
                 page.Add(new Rule { Style = new Style(Color.Grey35) });
                 page.Add(new Markup(typed != null
-                    ? UI.Spread([($"Type the volume name to delete it permanently: {typed}_", Color.Grey)], body)
+                    ? UI.Spread([($"Type the volume name to remove it permanently: {typed}_", Color.Grey)], body)
                     : UI.Spread(
                     [
                         ("ESC back", Color.Grey),
                         ("⏎ raw JSON", Color.Grey),
                         ("y copy name", Color.Grey),
                         ("b browse", Color.Grey),
-                        ("d delete", Color.Grey)
+                        ("d remove", Color.Grey)
                     ], body)));
 
                 ctx.UpdateTarget(new Padder(new Rows(page), new Padding(2, 1, 2, 0)));

@@ -46,13 +46,29 @@
             Labels
         }
 
-        internal enum MainListImageShorts
+        internal enum MainListImageSorts
         {
             Repository,
             Tag,
             Size,
             Created,
             Used
+        }
+
+        internal enum MainListVolumeSorts
+        {
+            Name,
+            Driver,
+            Mounted,
+            Created
+        }
+
+        internal enum MainListNetworkSorts
+        {
+            Name,
+            Driver,
+            Subnet,
+            Containers
         }
     }
 }
