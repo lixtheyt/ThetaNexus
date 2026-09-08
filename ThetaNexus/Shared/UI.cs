@@ -1,6 +1,9 @@
-using Docker.DotNet.Models;
+﻿using Docker.DotNet.Models;
 using Spectre.Console;
+using Spectre.Console.Rendering;
 using System.Globalization;
+using System.Text.Json;
+using Docker.DotNet;
 using Color = Spectre.Console.Color;
 
 namespace ThetaNexus.Shared
@@ -48,7 +51,7 @@ namespace ThetaNexus.Shared
         {
             var plain = string.Concat(cells.Select(x => x.Text));
 
-            var markup = string.Concat(cells.Select(x => x.Color is null
+            var markup = string.Concat(cells.Select(x => x.Color == null
                 ? Markup.Escape(x.Text)
                 : $"[{x.Color.Value.ToMarkup()}]{Markup.Escape(x.Text)}[/]"));
 
@@ -69,7 +72,7 @@ namespace ThetaNexus.Shared
             {
                 var (text, color) = items[i];
 
-                markup += color is null
+                markup += color == null
                     ? Markup.Escape(text)
                     : $"[{color.Value.ToMarkup()}]{Markup.Escape(text)}[/]";
 
@@ -101,6 +104,60 @@ namespace ThetaNexus.Shared
                 (glyph, colour),
                 (Crop(notice.Text, body - 5), colour)
             ], body, false)}[/]";
+        }
+
+        internal static IRenderable Menu((string Text, Color? Color)[] heading, (string Key, string Label)[] items, int selected, int body)
+        {
+            var inner = Math.Clamp(items.Max(x => x.Key.Length + x.Label.Length) + 12, 34, Math.Max(34, body - 8));
+
+            List<IRenderable> rows =
+            [
+                new Markup(Spread(heading, inner)),
+                new Markup($"[{Color.Grey35}]{new string('─', inner)}[/]")
+            ];
+
+            for (int i = 0; i < items.Length; i++)
+                rows.Add(new Markup(Compose(
+                [
+                    (" ", null),
+                    (items[i].Key.PadRight(5), Color.Khaki1),
+                    (items[i].Label, i == selected
+                        ? Color.White
+                        : Color.Grey)
+                ], inner, i == selected)));
+
+            rows.Add(new Text(string.Empty));
+            rows.Add(new Markup(Compose(
+            [
+                (" ", null),
+                ("⏎ run     ↑↓ move     esc cancel", Color.Grey35)
+            ], inner, false)));
+
+            return new Padder(
+                new Panel(new Rows(rows))
+                {
+                    Border = BoxBorder.Square,
+                    BorderStyle = new Style(Color.Grey35),
+                    Padding = new Padding(2, 1, 2, 1)
+                },
+                new Padding(Math.Max(0, (body - inner - 6) / 2), 0, Math.Max(0, body - inner - 6 - Math.Max(0, (body - inner - 6) / 2)), 0));
+        }
+
+        internal static string Reason(Exception failure)
+        {
+            if (failure is not DockerApiException api || string.IsNullOrWhiteSpace(api.ResponseBody))
+                return failure.Message;
+
+            try
+            {
+                return JsonDocument.Parse(api.ResponseBody).RootElement.TryGetProperty("message", out var message)
+                    ? message.GetString() ?? failure.Message
+                    : failure.Message;
+            }
+            catch (JsonException)
+            {
+                return api.ResponseBody.Trim();
+            }
         }
 
         internal static string Crop(string text, int max)
