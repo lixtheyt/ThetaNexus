@@ -10,6 +10,9 @@ namespace ThetaNexus.Shared
 {
     internal static class UI
     {
+        private static readonly byte[] _left = [0x01, 0x02, 0x04, 0x40];
+        private static readonly byte[] _right = [0x08, 0x10, 0x20, 0x80];
+
         internal static (string Text, Color Color) Glyph(ContainerListResponse container)
         {
             var status = container.Status ?? string.Empty;
@@ -158,6 +161,50 @@ namespace ThetaNexus.Shared
             {
                 return api.ResponseBody.Trim();
             }
+        }
+
+        internal static string[] Graph(IReadOnlyList<double> samples, int width, int height, double scale)
+        {
+            var dots = height * 4;
+            var need = width * 2;
+
+            var filled = new int[need];
+
+            for (int i = 0; i < need; i++)
+            {
+                var index = samples.Count - need + i;
+
+                filled[i] = index < 0
+                    ? 0
+                    : Math.Clamp((int)Math.Round(samples[index] / Math.Max(scale, 0.001) * dots), 0, dots);
+            }
+
+            var rows = new string[height];
+
+            for (int r = 0; r < height; r++)
+            {
+                var line = new char[width];
+
+                for (int c = 0; c < width; c++)
+                {
+                    var bits = 0;
+
+                    for (int sub = 0; sub < 4; sub++)
+                    {
+                        var above = (height - 1 - r) * 4 + (3 - sub);
+
+                        if (above < filled[c * 2])
+                            bits |= _left[sub];
+
+                        if (above < filled[c * 2 + 1])
+                            bits |= _right[sub];
+                    }
+
+                    line[c] = (char)(0x2800 + bits);
+                }
+                rows[r] = new string(line);
+            }
+            return rows;
         }
 
         internal static string Crop(string text, int max)

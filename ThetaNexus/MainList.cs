@@ -304,7 +304,7 @@ namespace ThetaNexus
                                             selected = rows.FindIndex(x => x.Project == toToggle && x.Container == null);
                                             break;
                                         case ConsoleKey.Spacebar when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { } target:
-                                            await ContainerActions.StartStop(client, target, cts.Token);
+                                            await ContainerActions.StartStop(client, target, null, cts.Token);
                                             break;
                                         case ConsoleKey.Spacebar when section == (int)Models.MainListSections.Events:
                                             paused = !paused;
