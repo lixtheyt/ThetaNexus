@@ -46,6 +46,14 @@
             Labels
         }
 
+        internal enum StatsTabs
+        {
+            Cpu,
+            Memory,
+            Network,
+            Disk
+        }
+
         internal enum MainListImageSorts
         {
             Repository,

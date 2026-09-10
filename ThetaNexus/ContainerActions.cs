@@ -62,14 +62,15 @@ namespace ThetaNexus
             return [..actions];
         }
 
-        internal static async Task StartStop(DockerClient client, ContainerListResponse container, CancellationToken token)
+        internal static async Task StartStop(DockerClient client, ContainerListResponse container, string? state, CancellationToken token)
         {
             var name = container.Names[0].TrimStart('/');
+            var current = state ?? container.State;
 
             if (_pending.ContainsKey(container.ID))
                 return;
 
-            if (container.State is "running" or "restarting" or "paused")
+            if (current is "running" or "restarting" or "paused")
             {
                 _pending[container.ID] = "stopping";
 
