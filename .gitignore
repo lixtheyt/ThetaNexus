@@ -1,4 +1,3 @@
-# Build output
 [Bb]in/
 [Oo]bj/
 [Dd]ebug/
@@ -11,19 +10,16 @@ publish/
 *.ilk
 *.cache
 
-# Logs (Serilog.Sinks.File)
 [Ll]og/
 [Ll]ogs/
 *.log
 
-# Secrets / local config
 .env
 .env.*
 secrets.json
 appsettings.*.local.json
 appsettings.Development.json
 
-# Visual Studio
 .vs/
 *.user
 *.suo
@@ -33,57 +29,46 @@ appsettings.Development.json
 *.vsp
 *.vspx
 
-# Rider / ReSharper
 .idea/
 _ReSharper*/
 *.DotSettings.user
 *.sln.iml
 
-# VS Code
 .vscode/
 !.vscode/extensions.json
 
-# Claude Code (per-machine)
 .claude/settings.local.json
 
-# NuGet
 *.nupkg
 *.snupkg
 packages/
 
-# MSBuild / diagnostics
 *.binlog
 *.svclog
 *.pidb
 
-# Test results
 [Tt]est[Rr]esult*/
 *.trx
 *.coverage
 *.coveragexml
 
-# Scratch / editor leftovers
 *.tmp
 *.bak
 *.orig
 *.rej
 *~
 
-# OS
 Thumbs.db
 ehthumbs.db
 desktop.ini
 $RECYCLE.BIN/
 .DS_Store
 
-# Generated banners (regenerate with docs/bannery/banners.py)
 ThetaNexus Bannery/
 
-# Visual Studio local databases
 *.opendb
 *.VC.db
 *.dbmdl
 
-# Local-only project notes
 CLAUDE.md
 docs/

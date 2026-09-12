@@ -47,7 +47,7 @@ namespace ThetaNexus
             if (live || paused)
                 actions.Add((ConsoleKey.K, "k", "kill"));
 
-            actions.Add((ConsoleKey.Delete, "Del", "remove"));
+            actions.Add((ConsoleKey.X, "x", "remove"));
             actions.Add((ConsoleKey.L, "l", "logs"));
 
             if (live)

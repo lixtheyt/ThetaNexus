@@ -51,6 +51,8 @@ namespace ThetaNexus
             var menu = false;
             var chosen = 0;
             var filtering = false;
+            ConsoleKey? confirm = null;
+            var question = string.Empty;
 
             (string Text, Models.Outcome Outcome)? notice = null;
             var noticed = DateTime.UtcNow;
@@ -71,6 +73,8 @@ namespace ThetaNexus
                     var version = await client.System.GetVersionAsync(cts.Token);
 
                     var engine = $"engine {version.Version}";
+
+                    var hostMemory = (await client.System.GetSystemInfoAsync(cts.Token)).MemTotal;
 
                     var containers = await client.Containers.ListContainersAsync(new ContainersListParameters { All = true }, cts.Token);
 
@@ -228,6 +232,73 @@ namespace ThetaNexus
                                     notice = null;
                                     noticed = DateTime.UtcNow;
 
+                                    if (confirm is { } pending)
+                                    {
+                                        if (key.Key == ConsoleKey.Y)
+                                            switch (pending)
+                                            {
+                                                case ConsoleKey.X when rows.Count > 0 && rows[selected].Container is { } removing:
+                                                    await ContainerActions.Remove(client, removing, cts.Token);
+                                                    stale = true;
+                                                    break;
+                                                case ConsoleKey.Delete when section == (int)Models.MainListSections.Containers:
+                                                    {
+                                                        var pruned = await client.Containers.PruneContainersAsync(new ContainersPruneParameters(), cts.Token);
+                                                        var removed = pruned.ContainersDeleted?.Count ?? 0;
+
+                                                        notice = removed > 0
+                                                            ? ($"removed {removed} stopped containers, reclaimed {UI.Size((long)pruned.SpaceReclaimed)}", Models.Outcome.Succeeded)
+                                                            : ("nothing to prune, every container is still running", Models.Outcome.Warned);
+                                                        noticed = DateTime.UtcNow;
+                                                        stale = true;
+                                                        break;
+                                                    }
+                                                case ConsoleKey.Delete when section == (int)Models.MainListSections.Images:
+                                                    {
+                                                        var pruned = await client.Images.PruneImagesAsync(new ImagesPruneParameters(), cts.Token);
+                                                        var removed = pruned.ImagesDeleted?.Count ?? 0;
+
+                                                        notice = removed > 0
+                                                            ? ($"deleted {removed} images, reclaimed {UI.Size((long)pruned.SpaceReclaimed)}", Models.Outcome.Succeeded)
+                                                            : ("nothing to prune, no untagged leftovers, tagged images are kept", Models.Outcome.Warned);
+                                                        noticed = DateTime.UtcNow;
+                                                        stale = true;
+                                                        break;
+                                                    }
+                                                case ConsoleKey.Delete when section == (int)Models.MainListSections.Volumes:
+                                                    {
+                                                        var pruned = await client.Volumes.PruneAsync(new VolumesPruneParameters(), cts.Token);
+                                                        var removed = pruned.VolumesDeleted?.Count ?? 0;
+
+                                                        notice = removed > 0
+                                                            ? ($"deleted {removed} volumes, reclaimed {UI.Size((long)pruned.SpaceReclaimed)}", Models.Outcome.Succeeded)
+                                                            : ("nothing to prune, no unnamed leftovers, named volumes are kept", Models.Outcome.Warned);
+                                                        noticed = DateTime.UtcNow;
+                                                        stale = true;
+                                                        break;
+                                                    }
+                                                case ConsoleKey.Delete when section == (int)Models.MainListSections.Networks:
+                                                    {
+                                                        var pruned = await client.Networks.PruneNetworksAsync(new NetworksDeleteUnusedParameters(), cts.Token);
+                                                        var removed = pruned.NetworksDeleted?.Count ?? 0;
+                                                        var custom = networks.Count(x => x.Name is not ("bridge" or "host" or "none"));
+
+                                                        notice = removed > 0
+                                                            ? ($"deleted {removed} networks", Models.Outcome.Succeeded)
+                                                            : custom > 0
+                                                                ? ($"nothing to prune, {custom} custom networks are in use", Models.Outcome.Warned)
+                                                                : ("nothing to prune, only bridge, host and none exist", Models.Outcome.Warned);
+                                                        noticed = DateTime.UtcNow;
+                                                        stale = true;
+                                                        break;
+                                                    }
+                                            }
+
+                                        confirm = null;
+                                        dirty = true;
+                                        continue;
+                                    }
+
                                     if (filtering)
                                     {
                                         filter = key.Key switch
@@ -335,15 +406,60 @@ namespace ThetaNexus
                                         case ConsoleKey.K when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { } killing:
                                             await ContainerActions.Kill(client, killing, cts.Token);
                                             break;
-                                        case ConsoleKey.Delete when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { } removing:
-                                            await ContainerActions.Remove(client, removing, cts.Token);
+                                        case ConsoleKey.X when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { } removing:
+                                            confirm = ConsoleKey.X;
+                                            question = $"Remove {removing.Names[0].TrimStart('/')} permanently?";
                                             break;
+                                        case ConsoleKey.Delete when section == (int)Models.MainListSections.Containers:
+                                            {
+                                                var stopped = containers.Count(x => x.State == "exited");
+
+                                                if (stopped == 0)
+                                                {
+                                                    notice = ("nothing to prune, every container is still running", Models.Outcome.Warned);
+                                                    noticed = DateTime.UtcNow;
+                                                    break;
+                                                }
+
+                                                confirm = ConsoleKey.Delete;
+                                                question = $"Remove all {stopped} stopped containers permanently?";
+                                                break;
+                                            }
                                         case var _ when key.KeyChar == '.' && actions.Length > 0:
                                             menu = true;
                                             chosen = 0;
                                             break;
+                                        case var _ when key.KeyChar == '?':
+                                            await Help.Display(ctx, cts.Token);
+                                            break;
+                                        case ConsoleKey.Delete when section == (int)Models.MainListSections.Images:
+                                            confirm = ConsoleKey.Delete;
+                                            question = "Prune untagged images?";
+                                            break;
+                                        case ConsoleKey.Delete when section == (int)Models.MainListSections.Volumes:
+                                            confirm = ConsoleKey.Delete;
+                                            question = "Prune unnamed volumes?";
+                                            break;
+                                        case ConsoleKey.Delete when section == (int)Models.MainListSections.Networks:
+                                            confirm = ConsoleKey.Delete;
+                                            question = "Prune unused networks?";
+                                            break;
                                         case ConsoleKey.Q:
                                             return;
+                                        case ConsoleKey.N when section == (int)Models.MainListSections.Images && imagesVisible.Count > 0:
+                                            {
+                                                var made = await RunContainer.Display(client, ctx, imagesVisible[selected], containers, cts.Token);
+
+                                                if (made != null)
+                                                {
+                                                    notice = ($"{made} created and started, press 1 for its logs", Models.Outcome.Succeeded);
+                                                    noticed = DateTime.UtcNow;
+                                                    section = (int)Models.MainListSections.Containers;
+                                                    stale = true;
+                                                }
+
+                                                break;
+                                            }
                                         case ConsoleKey.Enter when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { } open:
                                             shell = await ContainerDetails.Display(client, ctx, open, cts.Token);
 
@@ -405,7 +521,8 @@ namespace ThetaNexus
                                     new Grid { Expand = true }
                                         .AddColumn(new GridColumn())
                                         .AddColumn(new GridColumn { Alignment = Justify.Right })
-                                        .AddRow("[bold]ThetaNexus[/]", $"[{Color.Grey.ToMarkup()}]{engine} · {containers.Count(x => x.State == "running")}/{containers.Count} running[/]"),
+                                        .AddRow("[bold]ThetaNexus[/]", $"[{Color.Grey.ToMarkup()}]{engine} · {containers.Count(x => x.State == "running")}/{containers.Count} running[/]"
+                                            + (count > 0 ? $" [{Color.Grey35}]·[/] [{Color.Khaki1}]{selected + 1}[/][{Color.Grey35}]/{count}[/]" : string.Empty)),
                                     new Rule { Style = new Style(Color.Grey35) },
                                     new Markup(UI.Spread(
                                     [
@@ -488,7 +605,10 @@ namespace ThetaNexus
                                                 {
                                                     page.Add(new Markup($"[{Color.Grey.ToMarkup()}]No containers on this engine.[/]"));
 
-                                                    drawn = 1;
+                                                    page.Add(new Text(string.Empty));
+                                                    page.Add(new Markup($"[{Color.Grey35}]  docker run --rm hello-world[/]"));
+
+                                                    drawn = 3;
                                                 }
 
                                                 for (int i = first; i < last; i++)
@@ -502,7 +622,7 @@ namespace ThetaNexus
                                                         page.Add(new Markup(UI.Compose(
                                                         [
                                                             (collapsed.Contains(project) ? "▶ " : "▼ ", Color.Grey),
-                                                        (project, Color.Khaki1),
+                                                        (UI.Crop(project, Math.Max(8, body - 12)), Color.Khaki1),
                                                         ($" ({groups.First(x => x.Key == project).Count()})", Color.Grey35)
                                                         ], body, i == selected)));
 
@@ -524,12 +644,12 @@ namespace ThetaNexus
                                                     var cells = new List<(string, Color?)>
                                                 {
                                                     ("  ", null),
-                                                    (container.Names[0].TrimStart('/').PadRight(nameWidth), Color.SteelBlue1),
+                                                    (UI.Crop(container.Names[0].TrimStart('/'), nameWidth - 1).PadRight(nameWidth), Color.SteelBlue1),
                                                     (glyph.PadRight(stateWidth), color)
                                                 };
 
                                                     if (showImage)
-                                                        cells.Add((container.Image.PadRight(imageWidth), Color.MediumPurple2));
+                                                        cells.Add((UI.Crop(container.Image, imageWidth - 1).PadRight(imageWidth), Color.MediumPurple2));
 
                                                     if (showPorts)
                                                         cells.Add((UI.Crop(ports.Count switch
@@ -546,7 +666,9 @@ namespace ThetaNexus
 
                                                     if (showMem)
                                                         cells.Add((MainListContainerStats.Stats(container.ID) is { } used
-                                                            ? $"{used.Memory / 1024 / 1024}/{used.Limit / 1024 / 1024} MB".PadLeft(memWidth - 1) + " "
+                                                            ? (used.Limit > 0 && (hostMemory <= 0 || used.Limit < hostMemory)
+                                                                ? $"{used.Memory / 1024 / 1024}/{used.Limit / 1024 / 1024} MB"
+                                                                : $"{used.Memory / 1024 / 1024} MB").PadLeft(memWidth - 1) + " "
                                                             : "–".PadLeft(memWidth - 1) + " ", Color.Grey35));
 
                                                     cells.Add(((age.TotalMinutes < 1 ? $"{(int)age.TotalSeconds}s"
@@ -871,7 +993,13 @@ namespace ThetaNexus
                                     page.Add(new Markup(UI.Toast(toast, body)));
 
                                 page.Add(new Rule { Style = new Style(Color.Grey35) });
-                                page.Add(new Markup(UI.Spread(section == (int)Models.MainListSections.Events
+                                page.Add(new Markup(confirm != null
+                                    ? UI.Spread(
+                                    [
+                                        (question, Color.Grey),
+                                        ("[y] yes   [n] no", Color.SteelBlue1)
+                                    ], body)
+                                    : UI.Spread(section == (int)Models.MainListSections.Events
                                     ?
                                     [
                                         ("←→ section", Color.Grey),
@@ -880,6 +1008,36 @@ namespace ThetaNexus
                                         (paused ? "␣ resume" : "␣ pause", paused ? Color.Orange1 : Color.Grey),
                                         ("c clear", Color.Grey),
                                         ("/ filter", Color.Grey),
+                                        ("? help", Color.Grey),
+                                        ("q quit", Color.Grey)
+                                    ]
+                                    : section == (int)Models.MainListSections.Containers
+                                    ?
+                                    [
+                                        ("↑↓ move", Color.Grey),
+                                        ("←→ section", Color.Grey),
+                                        ("⏎ details", Color.Grey),
+                                        ("␣ start/stop", Color.Grey),
+                                        ("p pause", Color.Grey),
+                                        ("x remove", Color.Grey),
+                                        ("Del prune", Color.Grey),
+                                        (". actions", Color.Grey),
+                                        ("/ filter", Color.Grey),
+                                        ("? help", Color.Grey),
+                                        ("q quit", Color.Grey)
+                                    ]
+                                    : section == (int)Models.MainListSections.Images
+                                    ?
+                                    [
+                                        ("↑↓ move", Color.Grey),
+                                        ("←→ section", Color.Grey),
+                                        ("TAB sort", Color.Grey),
+                                        ("⏎ details", Color.Grey),
+                                        ("n run", Color.Grey),
+                                        ("Del prune", Color.Grey),
+                                        (". actions", Color.Grey),
+                                        ("/ filter", Color.Grey),
+                                        ("? help", Color.Grey),
                                         ("q quit", Color.Grey)
                                     ]
                                     :
@@ -887,11 +1045,11 @@ namespace ThetaNexus
                                         ("↑↓ move", Color.Grey),
                                         ("←→ section", Color.Grey),
                                         ("TAB sort", Color.Grey),
-                                        ("c collapse", Color.Grey),
                                         ("⏎ details", Color.Grey),
-                                        ("␣ start/stop", Color.Grey),
+                                        ("Del prune", Color.Grey),
                                         (". actions", Color.Grey),
                                         ("/ filter", Color.Grey),
+                                        ("? help", Color.Grey),
                                         ("q quit", Color.Grey)
                                     ], body)));
 
