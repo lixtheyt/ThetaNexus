@@ -35,7 +35,8 @@
             Env,
             Mounts,
             Networks,
-            Health
+            Health,
+            Files
         }
 
         internal enum ImageInfoTabs

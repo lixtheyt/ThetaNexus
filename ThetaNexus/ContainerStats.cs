@@ -73,9 +73,11 @@ namespace ThetaNexus
                         case ConsoleKey.Spacebar:
                             await ContainerActions.StartStop(client, container, inspect.State.Status, token);
                             break;
+                        case ConsoleKey.Tab when key.Modifiers.HasFlag(ConsoleModifiers.Shift) && !graphs:
                         case ConsoleKey.LeftArrow when !graphs:
                             tab = (tab + tabs.Length - 1) % tabs.Length;
                             break;
+                        case ConsoleKey.Tab when !graphs:
                         case ConsoleKey.RightArrow when !graphs:
                             tab = (tab + 1) % tabs.Length;
                             break;
@@ -233,7 +235,7 @@ namespace ThetaNexus
                 (string Text, Color? Color)[][] process =
                 [
                     [("PROCESS", Color.SteelBlue1)],
-                    [("pids".PadRight(14), Color.Grey), ($"{stats?.PidsStats?.Current ?? 0} / {(stats?.PidsStats?.Limit > 0 ? stats.PidsStats.Limit.ToString() : "∞")}", Color.Grey)],
+                    [("pids".PadRight(14), Color.Grey), ($"{stats?.PidsStats?.Current ?? 0} / {(stats?.PidsStats?.Limit is > 0 and < ulong.MaxValue ? stats.PidsStats.Limit.ToString() : "∞")}", Color.Grey)],
                     [("restarts".PadRight(14), Color.Grey), ($"{inspect.RestartCount}", Color.Grey)],
                     [("uptime".PadRight(14), Color.Grey), (upFor == TimeSpan.Zero ? "–" : upFor.TotalHours < 1 ? $"{(int)upFor.TotalMinutes}m" : upFor.TotalDays < 1 ? $"{(int)upFor.TotalHours}h {upFor.Minutes}m" : $"{(int)upFor.TotalDays}d", Color.CadetBlue)]
                 ];
@@ -462,16 +464,14 @@ namespace ThetaNexus
                             ("ESC back", Color.Grey),
                             ("g tabs", Color.Grey),
                             ("c clear", Color.Grey),
-                            (". actions", Color.Grey),
                             ("␣ start/stop", Color.Grey)
                         ]
                         :
                         [
                             ("ESC back", Color.Grey),
-                            ("←→ tab", Color.Grey),
+                            ("TAB/←→ tab", Color.Grey),
                             ("g graphs", Color.Grey),
                             ("c clear", Color.Grey),
-                            (". actions", Color.Grey),
                             ("␣ start/stop", Color.Grey)
                         ]
                     , body)));

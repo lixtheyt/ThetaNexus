@@ -66,6 +66,18 @@ namespace ThetaNexus.Shared
 
         internal static string Spread((string Text, Color? Color)[] items, int body)
         {
+            var kept = items.Length;
+
+            while (kept > 1 && items.Take(kept).Sum(x => x.Text.Length) + kept > body)
+                kept--;
+
+            items = kept < items.Length
+                ? [.. items.Take(kept), ("…", (Color?)Color.Grey35)]
+                : items;
+
+            if (items.Length == 1)
+                items = [(Crop(items[0].Text, body), items[0].Color)];
+
             var gaps = Math.Max(1, items.Length - 1);
             var space = Math.Max(gaps, body - items.Sum(x => x.Text.Length));
 

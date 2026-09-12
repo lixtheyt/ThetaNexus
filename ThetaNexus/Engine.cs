@@ -1,4 +1,4 @@
-using Docker.DotNet;
+﻿using Docker.DotNet;
 
 namespace ThetaNexus
 {
