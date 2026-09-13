@@ -2,6 +2,7 @@
 using Docker.DotNet.Models;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Diagnostics;
 using System.Collections.Concurrent;
 using System.Collections.Specialized;
 using System.Globalization;
@@ -115,6 +116,18 @@ namespace ThetaNexus
                             break;
                         case ConsoleKey.E when inspect.State.Running:
                             return ["exec", "-it", container.ID, "sh", "-c", "command -v bash >/dev/null && exec bash || exec sh"];
+                        case ConsoleKey.O when (container.Ports ?? []).FirstOrDefault(x => x.PublicPort > 0) is { } published:
+                            try
+                            {
+                                Process.Start(new ProcessStartInfo($"http://localhost:{published.PublicPort}") { UseShellExecute = true })?.Dispose();
+                            }
+                            catch (Exception browser)
+                            {
+                                notice = ($"could not open localhost:{published.PublicPort}, {browser.Message}", Models.Outcome.Failed);
+                                noticed = DateTime.UtcNow;
+                            }
+
+                            break;
                         case ConsoleKey.UpArrow when section == (int)Models.DetailsTabs.Files:
                             cursor = Math.Max(0, cursor - 1);
                             break;
@@ -301,15 +314,15 @@ namespace ThetaNexus
 
                             grid.AddColumn(new GridColumn { Padding = new Padding(0, 0, 4, 0), NoWrap = true })
                                 .AddColumn(new GridColumn { NoWrap = true })
-                                .AddRow(new Markup($"[{Color.Grey}]Status[/]"), new Markup($"[{color}]{glyph}[/]")) // status
-                                .AddRow(new Markup($"[{Color.Grey}]Created[/]"), new Markup($"[{Color.CadetBlue}]{inspect.Created.ToLocalTime():G}[/]")) // created
-                                .AddRow(new Markup($"[{Color.Grey}]Started[/]"), new Markup($"[{Color.CadetBlue}]{DateTime.Parse(inspect.State.StartedAt, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind).ToLocalTime():G}[/]")) // started
-                                .AddRow(new Markup($"[{Color.Grey}]Image[/]"), new Markup($"[{Color.MediumPurple2}]{Markup.Escape(inspect.Config.Image)}[/] [{Color.Grey35}]{Markup.Escape(inspect.Image[..19])}…[/]")) // image
-                                .AddRow(new Markup($"[{Color.Grey}]Command[/]"), new Text(string.Join("\n", command.Take(room)) + (command.Length > room ? "…" : string.Empty))) // command
-                                .AddRow(new Markup($"[{Color.Grey}]Ports[/]"), new Markup(ports)) // ports
-                                .AddRow(new Markup($"[{Color.Grey}]Restarts[/]"), new Text(inspect.RestartCount.ToString())) // restarts
-                                .AddRow(new Markup($"[{Color.Grey}]Limits[/]"), new Markup($"memory {(inspect.HostConfig.Memory > 0 ? $"{inspect.HostConfig.Memory / 1024 / 1024} MB" : "unlimited")} [{Color.Grey35}]·[/] cpus {(inspect.HostConfig.NanoCPUs > 0 ? (inspect.HostConfig.NanoCPUs / 1_000_000_000.0).ToString("0.##", CultureInfo.InvariantCulture) : "unlimited")}")) // limits
-                                .AddRow(new Markup($"[{Color.Grey}]Project[/]"), new Markup(project)); // project
+                                .AddRow(new Markup($"[{Color.Grey}]Status[/]"), new Markup($"[{color}]{glyph}[/]"))
+                                .AddRow(new Markup($"[{Color.Grey}]Created[/]"), new Markup($"[{Color.CadetBlue}]{inspect.Created.ToLocalTime():G}[/]"))
+                                .AddRow(new Markup($"[{Color.Grey}]Started[/]"), new Markup($"[{Color.CadetBlue}]{DateTime.Parse(inspect.State.StartedAt, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind).ToLocalTime():G}[/]"))
+                                .AddRow(new Markup($"[{Color.Grey}]Image[/]"), new Markup($"[{Color.MediumPurple2}]{Markup.Escape(inspect.Config.Image)}[/] [{Color.Grey35}]{Markup.Escape(inspect.Image[..19])}…[/]"))
+                                .AddRow(new Markup($"[{Color.Grey}]Command[/]"), new Text(string.Join("\n", command.Take(room)) + (command.Length > room ? "…" : string.Empty)))
+                                .AddRow(new Markup($"[{Color.Grey}]Ports[/]"), new Markup(ports))
+                                .AddRow(new Markup($"[{Color.Grey}]Restarts[/]"), new Text(inspect.RestartCount.ToString()))
+                                .AddRow(new Markup($"[{Color.Grey}]Limits[/]"), new Markup($"memory {(inspect.HostConfig.Memory > 0 ? $"{inspect.HostConfig.Memory / 1024 / 1024} MB" : "unlimited")} [{Color.Grey35}]·[/] cpus {(inspect.HostConfig.NanoCPUs > 0 ? (inspect.HostConfig.NanoCPUs / 1_000_000_000.0).ToString("0.##", CultureInfo.InvariantCulture) : "unlimited")}"))
+                                .AddRow(new Markup($"[{Color.Grey}]Project[/]"), new Markup(project));
                             break;
                         }
                     case Models.DetailsTabs.Env:
@@ -549,7 +562,7 @@ namespace ThetaNexus
             }
         }
 
-        private static async Task DisplayLogs(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
+        internal static async Task DisplayLogs(DockerClient client, LiveDisplayContext ctx, ContainerListResponse container, CancellationToken token)
         {
             var buffer = new byte[16 * 1024];
             var chars = new char[buffer.Length];
@@ -578,8 +591,8 @@ namespace ThetaNexus
 
             var decoders = new Decoder[2]
             {
-                Encoding.UTF8.GetDecoder(), // stdout
-                Encoding.UTF8.GetDecoder() // stderr
+                Encoding.UTF8.GetDecoder(),
+                Encoding.UTF8.GetDecoder()
             };
 
             (string Text, Models.Outcome Outcome)? notice = null;

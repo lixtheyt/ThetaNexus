@@ -5,6 +5,7 @@ using Spectre.Console;
 using Spectre.Console.Rendering;
 using Color = Spectre.Console.Color;
 using ThetaNexus.Shared;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 
@@ -327,10 +328,10 @@ namespace ThetaNexus
 
                                         dirty = true;
 
-                                        if (menu || key.Key != ConsoleKey.Enter)
+                                        if (menu || key.Key != ConsoleKey.Enter || actions.Length == 0)
                                             continue;
 
-                                        pressed = actions[chosen].Key;
+                                        pressed = actions[Math.Min(chosen, actions.Length - 1)].Key;
                                     }
 
                                     switch (pressed)
@@ -467,6 +468,28 @@ namespace ThetaNexus
                                                 return;
 
                                             break;
+                                        case ConsoleKey.L when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { } logging:
+                                            await ContainerDetails.DisplayLogs(client, ctx, logging, cts.Token);
+                                            break;
+                                        case ConsoleKey.S when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { } watching:
+                                            await ContainerStats.Display(client, ctx, watching, cts.Token);
+                                            break;
+                                        case ConsoleKey.E when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { State: "running" } shelling:
+                                            shell = ["exec", "-it", shelling.ID, "sh", "-c", "command -v bash >/dev/null && exec bash || exec sh"];
+                                            return;
+                                        case ConsoleKey.O when section == (int)Models.MainListSections.Containers && rows.Count > 0 && rows[selected].Container is { } opening
+                                            && (opening.Ports ?? []).FirstOrDefault(x => x.PublicPort > 0) is { } published:
+                                            try
+                                            {
+                                                Process.Start(new ProcessStartInfo($"http://localhost:{published.PublicPort}") { UseShellExecute = true })?.Dispose();
+                                            }
+                                            catch (Exception browser)
+                                            {
+                                                notice = ($"could not open localhost:{published.PublicPort}, {browser.Message}", Models.Outcome.Failed);
+                                                noticed = DateTime.UtcNow;
+                                            }
+
+                                            break;
                                         case ConsoleKey.Enter when section == (int)Models.MainListSections.Images && imagesVisible.Count > 0:
                                             shell = await ImageDetails.Display(client, ctx, imagesVisible[selected], cts.Token);
 
@@ -569,9 +592,13 @@ namespace ThetaNexus
                                                 const int stateWidth = 16;
                                                 var portsWidth = showPorts ? 15 : 0;
                                                 var cpuWidth = showCpu ? 8 : 0;
-                                                var memWidth = showMem ? 12 : 0;
+                                                var memWidth = showMem ? 14 : 0;
                                                 const int upWidth = 8;
-                                                var imageWidth = showImage ? Math.Max(10, body - 2 - nameWidth - stateWidth - portsWidth - cpuWidth - memWidth - upWidth) : 0;
+                                                var room = showImage ? body - 2 - nameWidth - stateWidth - portsWidth - cpuWidth - memWidth - upWidth : 0;
+
+                                                showImage = room >= 10;
+
+                                                var imageWidth = showImage ? room : 0;
 
                                                 var first = selected / bodyHeight * bodyHeight;
                                                 var last = Math.Min(first + bodyHeight, rows.Count);
@@ -661,15 +688,15 @@ namespace ThetaNexus
 
                                                     if (showCpu)
                                                         cells.Add((MainListContainerStats.Stats(container.ID)?.Cpu is { } cpu
-                                                            ? cpu.ToString("0.0", CultureInfo.InvariantCulture).PadLeft(cpuWidth - 2) + "% "
+                                                            ? (UI.Crop(cpu.ToString("0.0", CultureInfo.InvariantCulture), cpuWidth - 3) + "%").PadLeft(cpuWidth - 1) + " "
                                                             : "–".PadLeft(cpuWidth - 1) + " ", Color.Grey35));
 
                                                     if (showMem)
-                                                        cells.Add((MainListContainerStats.Stats(container.ID) is { } used
-                                                            ? (used.Limit > 0 && (hostMemory <= 0 || used.Limit < hostMemory)
+                                                        cells.Add((UI.Crop(MainListContainerStats.Stats(container.ID) is { } used
+                                                            ? used.Limit > 0 && (hostMemory <= 0 || used.Limit < hostMemory)
                                                                 ? $"{used.Memory / 1024 / 1024}/{used.Limit / 1024 / 1024} MB"
-                                                                : $"{used.Memory / 1024 / 1024} MB").PadLeft(memWidth - 1) + " "
-                                                            : "–".PadLeft(memWidth - 1) + " ", Color.Grey35));
+                                                                : $"{used.Memory / 1024 / 1024} MB"
+                                                            : "–", memWidth - 2).PadLeft(memWidth - 1) + " ", Color.Grey35));
 
                                                     cells.Add(((age.TotalMinutes < 1 ? $"{(int)age.TotalSeconds}s"
                                                         : age.TotalHours < 1 ? $"{(int)age.TotalMinutes}m"
@@ -701,7 +728,7 @@ namespace ThetaNexus
                                                 (showId ? "ID".PadRight(idWidth) : string.Empty, Color.Grey35),
                                                 Title(2, sizeWidth - 3, true),
                                                 ("   ", null),
-                                                (showCreated ? "CREATED".PadRight(createdWidth) : string.Empty, Color.Grey35),
+                                                (showCreated ? Title(3, createdWidth, false) : (string.Empty, (Color?)null)),
                                                 Title(4, usedWidth, true)
                                                 ], body, false)));
 
@@ -892,19 +919,22 @@ namespace ThetaNexus
                                             }
                                         case Models.MainListSections.Events:
                                             {
+                                                var showName = width >= 71;
+
                                                 const int timeWidth = 10;
                                                 const int typeWidth = 11;
                                                 const int actionWidth = 22;
-                                                const int nameWidth = 22;
-                                                var detailWidth = Math.Max(8, body - 2 - timeWidth - typeWidth - actionWidth - nameWidth);
+                                                var nameWidth = showName ? 22 : 0;
+                                                var detailWidth = Math.Max(0, body - 2 - timeWidth - typeWidth - actionWidth - nameWidth);
+                                                var showDetail = detailWidth > 2;
 
                                                 page.Add(new Markup(UI.Compose([
                                                     ("  ", null),
                                                 ($"TIME {(descending[section] ? '▼' : '▲')}".PadRight(timeWidth), Color.SteelBlue1),
                                                 ("TYPE".PadRight(typeWidth), Color.Grey35),
                                                 ("ACTION".PadRight(actionWidth), Color.Grey35),
-                                                ("NAME".PadRight(nameWidth), Color.Grey35),
-                                                ("DETAIL".PadRight(detailWidth), Color.Grey35)
+                                                (showName ? "NAME".PadRight(nameWidth) : string.Empty, Color.Grey35),
+                                                (showDetail ? "DETAIL".PadRight(detailWidth) : string.Empty, Color.Grey35)
                                                     ], body, false)));
 
                                                 Message[] recent;
@@ -967,8 +997,8 @@ namespace ThetaNexus
                                                         (DateTimeOffset.FromUnixTimeMilliseconds(message.TimeNano / 1_000_000).ToLocalTime().ToString("HH:mm:ss").PadRight(timeWidth), Color.CadetBlue),
                                                         (UI.Crop(message.Type ?? "–", typeWidth - 1).PadRight(typeWidth), Color.Grey35),
                                                         (UI.Crop(action, actionWidth - 1).PadRight(actionWidth), color),
-                                                        (UI.Crop(name, nameWidth - 1).PadRight(nameWidth), Color.SteelBlue1),
-                                                        (UI.Crop(detail, detailWidth - 1).PadRight(detailWidth), Color.Grey)
+                                                        (showName ? UI.Crop(name, nameWidth - 1).PadRight(nameWidth) : string.Empty, Color.SteelBlue1),
+                                                        (showDetail ? UI.Crop(detail, detailWidth - 1).PadRight(detailWidth) : string.Empty, Color.Grey)
                                                         ], body, false)));
 
                                                     drawn++;
@@ -1035,7 +1065,6 @@ namespace ThetaNexus
                                         ("⏎ details", Color.Grey),
                                         ("n run", Color.Grey),
                                         ("Del prune", Color.Grey),
-                                        (". actions", Color.Grey),
                                         ("/ filter", Color.Grey),
                                         ("? help", Color.Grey),
                                         ("q quit", Color.Grey)
@@ -1047,7 +1076,6 @@ namespace ThetaNexus
                                         ("TAB sort", Color.Grey),
                                         ("⏎ details", Color.Grey),
                                         ("Del prune", Color.Grey),
-                                        (". actions", Color.Grey),
                                         ("/ filter", Color.Grey),
                                         ("? help", Color.Grey),
                                         ("q quit", Color.Grey)
@@ -1087,7 +1115,7 @@ namespace ThetaNexus
 
                         if (child != null)
                             // ReSharper disable once MethodSupportsCancellation
-                            await child.WaitForExitAsync(); // no token here otherwise it will throw :(
+                            await child.WaitForExitAsync();
 
                         Console.CursorVisible = false;
 
@@ -1096,7 +1124,7 @@ namespace ThetaNexus
 
                     return;
                 }
-                catch (Exception ex) when (ex is DockerApiException or TimeoutException or OperationCanceledException or HttpRequestException or IOException)
+                catch (Exception ex) when (ex is DockerApiException or TimeoutException or OperationCanceledException or HttpRequestException or IOException or Win32Exception)
                 {
                     await cts.CancelAsync();
 
