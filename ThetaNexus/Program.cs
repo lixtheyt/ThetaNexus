@@ -25,14 +25,17 @@ namespace ThetaNexus
 
             var font = FigletFont.Load(stream);
 
-            var top = Math.Max(0, (Console.WindowHeight - font.Height) / 2);
+            var top = Math.Max(0, (Console.WindowHeight - font.Height - 2) / 2);
 
-            AnsiConsole.Write(new Padder(Align.Center(new Grid()
-                .AddColumn(new GridColumn { Padding = new Padding(0, 0, 0, 0), NoWrap = true, Width = 43 })
-                .AddColumn(new GridColumn { Padding = new Padding(0, 0, 0, 0), NoWrap = true, Width = 45 })
-                .AddRow(
-                    new FigletText(font, "Theta").Color(Color.Blue3_1).LeftJustified(),
-                    new FigletText(font, "Nexus").Color(Color.Red3_1).LeftJustified())), new Padding(0, top, 0, 0)));
+            AnsiConsole.Write(new Padder(Align.Center(new Rows(
+                new Grid()
+                    .AddColumn(new GridColumn { Padding = new Padding(0, 0, 0, 0), NoWrap = true, Width = 43 })
+                    .AddColumn(new GridColumn { Padding = new Padding(0, 0, 0, 0), NoWrap = true, Width = 45 })
+                    .AddRow(
+                        new FigletText(font, "Theta").Color(Color.Blue3_1).LeftJustified(),
+                        new FigletText(font, "Nexus").Color(Color.Red3_1).LeftJustified()),
+                new Markup(string.Empty),
+                Align.Center(new Markup($"[{Color.Grey35}]created by lix[/]")))), new Padding(0, top, 0, 0)));
 
             Thread.Sleep(1500);
 

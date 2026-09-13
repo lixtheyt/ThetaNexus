@@ -1,0 +1,12 @@
+* text=auto
+
+# Binary, so nobody gets a diff of one and nothing tries to fix their line endings.
+*.png binary
+*.gif binary
+*.bmp binary
+*.ico binary
+*.exe binary
+
+# The README images are the only non-code in the repository, and counting them
+# would put the language bar on something that is not the project.
+ThetaNexus/assets/** linguist-documentation

@@ -340,7 +340,8 @@ namespace ThetaNexus
                         }
                 }
 
-                page.Add(grid);
+                if (grid.Columns.Count > 0)
+                    page.Add(grid);
 
                 drawn += grid.Rows.Count;
 

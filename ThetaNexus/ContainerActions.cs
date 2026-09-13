@@ -39,7 +39,7 @@ namespace ThetaNexus
             ];
 
             if (live)
-                actions.Add((ConsoleKey.P, "p", "paused"));
+                actions.Add((ConsoleKey.P, "p", "pause"));
 
             if (paused)
                 actions.Add((ConsoleKey.P, "p", "unpause"));
@@ -51,13 +51,13 @@ namespace ThetaNexus
             actions.Add((ConsoleKey.L, "l", "logs"));
 
             if (live)
-            {
                 actions.Add((ConsoleKey.S, "s", "stats"));
+
+            if (current == "running")
                 actions.Add((ConsoleKey.E, "e", "shell"));
-            }
 
             if ((container.Ports ?? []).FirstOrDefault(x => x.PublicPort > 0) is { } published)
-                actions.Add((ConsoleKey.O, "o", $"open {published.PublicPort} is browser"));
+                actions.Add((ConsoleKey.O, "o", $"open {published.PublicPort} in browser"));
 
             return [..actions];
         }

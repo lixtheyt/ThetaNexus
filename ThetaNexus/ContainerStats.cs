@@ -165,7 +165,7 @@ namespace ThetaNexus
                     var perCpu = stats.CPUStats.CPUUsage.PercpuUsage ?? [];
 
                     coreShare = lastCores.Length == perCpu.Count
-                        ? [.. perCpu.Select((x, i) => (double)(x - lastCores[i]))]
+                        ? [.. perCpu.Select((x, i) => x >= lastCores[i] ? (double)(x - lastCores[i]) : 0)]
                         : new double[perCpu.Count];
 
                     lastCores = [.. perCpu];
@@ -174,7 +174,7 @@ namespace ThetaNexus
                         ? cpuDelta / systemDelta * cpus * 100.0
                         : 0);
 
-                    memHistory.Add((stats.MemoryStats.Usage - cache) / 1024.0 / 1024.0);
+                    memHistory.Add(Math.Min(stats.MemoryStats.Usage, stats.MemoryStats.Usage - cache) / 1024.0 / 1024.0);
 
                     netHistory.Add((rate.Down ?? 0) + (rate.Up ?? 0));
 
@@ -185,7 +185,7 @@ namespace ThetaNexus
                             series.RemoveRange(0, series.Count - 400);
                 }
 
-                var used = stats == null ? 0 : (long)(stats.MemoryStats.Usage - cache);
+                var used = stats == null ? 0 : (long)Math.Min(stats.MemoryStats.Usage, stats.MemoryStats.Usage - cache);
                 var limit = stats == null ? 0 : (long)stats.MemoryStats.Limit;
 
                 var (glyph, color) = ContainerActions.Pending(container.ID) is { } verb

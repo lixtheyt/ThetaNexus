@@ -43,10 +43,10 @@ namespace ThetaNexus
 
                                 var cache = x.MemoryStats.Stats != null && x.MemoryStats.Stats.TryGetValue("inactive_file", out var inactive) ? inactive : 0;
 
-                                _stats[id] = (_previous.TryGetValue(id, out var previous) && system > previous.System
-                                        ? Math.Max(0, (double)(cpu - previous.Cpu)) / (system - previous.System) * cpus * 100.0
+                                _stats[id] = (_previous.TryGetValue(id, out var previous) && system > previous.System && cpu >= previous.Cpu
+                                        ? (cpu - previous.Cpu) / (double)(system - previous.System) * cpus * 100.0
                                         : null,
-                                    (long)(x.MemoryStats.Usage - cache),
+                                    (long)Math.Min(x.MemoryStats.Usage, x.MemoryStats.Usage - cache),
                                     (long)x.MemoryStats.Limit);
 
                                 _previous[id] = (cpu, system);

@@ -70,5 +70,10 @@ ThetaNexus Bannery/
 *.VC.db
 *.dbmdl
 
-CLAUDE.md
 docs/
+*.md
+!README.md
+
+ThetaNexus.iss
+installer-assets/
+installers/
