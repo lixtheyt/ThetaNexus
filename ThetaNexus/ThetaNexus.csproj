@@ -11,6 +11,8 @@
     <Company>lixtheyt</Company>
 
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+
+    <ApplicationIcon>thetanexus.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
