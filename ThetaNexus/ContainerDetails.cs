@@ -114,7 +114,7 @@ namespace ThetaNexus
                         case ConsoleKey.L:
                             await DisplayLogs(client, ctx, container, token);
                             break;
-                        case ConsoleKey.E when inspect.State.Running:
+                        case ConsoleKey.E when inspect.State.Status == "running":
                             return ["exec", "-it", container.ID, "sh", "-c", "command -v bash >/dev/null && exec bash || exec sh"];
                         case ConsoleKey.O when (container.Ports ?? []).FirstOrDefault(x => x.PublicPort > 0) is { } published:
                             try

@@ -38,14 +38,14 @@ namespace ThetaNexus
             List<double> netHistory = new();
             List<double> diskHistory = new();
 
-            var lastDisk = (Read: 0L, Write: 0L);
+            (long Read, long Write)? lastDisk = null;
             var diskRate = (Read: 0.0, Write: 0.0);
 
             ulong[] lastCores = [];
             double[] coreShare = [];
 
             var seen = default(DateTime);
-            var last = (Rx: 0L, Tx: 0L);
+            (long Rx, long Tx)? last = null;
             var rate = (Down: (double?)null, Up: (double?)null);
 
             var inspect = await client.Containers.InspectContainerAsync(container.ID, token);
@@ -150,14 +150,14 @@ namespace ThetaNexus
                         .Where(x => x.Op?.StartsWith("w", StringComparison.OrdinalIgnoreCase) == true)
                         .Sum(x => (long)x.Value);
 
-                    rate = seconds > 0 && last.Rx > 0
-                        ? ((rx - last.Rx) / seconds, (tx - last.Tx) / seconds)
+                    rate = seconds > 0 && last is { } before && rx >= before.Rx && tx >= before.Tx
+                        ? ((rx - before.Rx) / seconds, (tx - before.Tx) / seconds)
                         : (null, null);
 
                     last = (rx, tx);
 
-                    diskRate = seconds > 0 && lastDisk.Read > 0
-                        ? ((read - lastDisk.Read) / seconds, (write - lastDisk.Write) / seconds)
+                    diskRate = seconds > 0 && lastDisk is { } prior && read >= prior.Read && write >= prior.Write
+                        ? ((read - prior.Read) / seconds, (write - prior.Write) / seconds)
                         : (0, 0);
 
                     lastDisk = (read, write);
@@ -354,8 +354,8 @@ namespace ThetaNexus
                                 right =
                                 [
                                     [("TRAFFIC", Color.SteelBlue1)],
-                                    [("received".PadRight(14), Color.Grey), (UI.Size(last.Rx), Color.Grey)],
-                                    [("sent".PadRight(14), Color.Grey), (UI.Size(last.Tx), Color.Grey)],
+                                    [("received".PadRight(14), Color.Grey), (UI.Size(last?.Rx ?? 0), Color.Grey)],
+                                    [("sent".PadRight(14), Color.Grey), (UI.Size(last?.Tx ?? 0), Color.Grey)],
                                     [("interfaces".PadRight(14), Color.Grey), ($"{stats?.Networks?.Count ?? 0}", Color.Grey)],
                                     [],
                                     [("PACKETS", Color.SteelBlue1)],
@@ -439,7 +439,7 @@ namespace ThetaNexus
 
                     Block("NET",
                         Rate((rate.Down ?? 0) + (rate.Up ?? 0)),
-                        $"total ↓ {UI.Size(last.Rx)}  ↑ {UI.Size(last.Tx)}{dot}pkts {stats?.Networks?.Values.Sum(x => (long)x.RxPackets) ?? 0} / {stats?.Networks?.Values.Sum(x => (long)x.TxPackets) ?? 0}{dot}drop {stats?.Networks?.Values.Sum(x => (long)x.RxDropped + (long)x.TxDropped) ?? 0}",
+                        $"total ↓ {UI.Size(last?.Rx ?? 0)}  ↑ {UI.Size(last?.Tx ?? 0)}{dot}pkts {stats?.Networks?.Values.Sum(x => (long)x.RxPackets) ?? 0} / {stats?.Networks?.Values.Sum(x => (long)x.TxPackets) ?? 0}{dot}drop {stats?.Networks?.Values.Sum(x => (long)x.RxDropped + (long)x.TxDropped) ?? 0}",
                         netHistory, netScale, UI.Size((long)netScale), unit,
                         [Color.Aqua]);
 
