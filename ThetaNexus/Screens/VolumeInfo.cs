@@ -7,7 +7,7 @@ using System.Globalization;
 using Spectre.Console.Rendering;
 using ThetaNexus.Shared;
 
-namespace ThetaNexus
+namespace ThetaNexus.Screens
 {
     internal static class VolumeInfo
     {

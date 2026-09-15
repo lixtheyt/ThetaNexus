@@ -8,7 +8,7 @@ using System.Collections.Specialized;
 using System.Text;
 using ThetaNexus.Shared;
 
-namespace ThetaNexus
+namespace ThetaNexus.Screens
 {
     internal static class RunContainer
     {

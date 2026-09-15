@@ -2,7 +2,7 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
 
-namespace ThetaNexus
+namespace ThetaNexus.Api
 {
     internal static class MainListContainerStats
     {
