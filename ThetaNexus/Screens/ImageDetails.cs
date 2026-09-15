@@ -6,7 +6,7 @@ using System.Diagnostics;
 using ThetaNexus.Shared;
 using Color = Spectre.Console.Color;
 
-namespace ThetaNexus
+namespace ThetaNexus.Screens
 {
     internal static class ImageDetails
     {

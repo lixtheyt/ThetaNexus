@@ -3,7 +3,7 @@ using Spectre.Console.Rendering;
 using System.Diagnostics;
 using ThetaNexus.Shared;
 
-namespace ThetaNexus
+namespace ThetaNexus.Screens
 {
     internal static class RawJson
     {

@@ -3,9 +3,10 @@ using Docker.DotNet.Models;
 using Spectre.Console;
 using Spectre.Console.Rendering;
 using System.Globalization;
+using ThetaNexus.Api;
 using ThetaNexus.Shared;
 
-namespace ThetaNexus
+namespace ThetaNexus.Screens
 {
     internal static class ContainerStats
     {

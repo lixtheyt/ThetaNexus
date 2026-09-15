@@ -8,8 +8,9 @@ using ThetaNexus.Shared;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using ThetaNexus.Api;
 
-namespace ThetaNexus
+namespace ThetaNexus.Screens
 {
     internal static class MainList
     {

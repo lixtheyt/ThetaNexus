@@ -1,6 +1,6 @@
 ﻿using Docker.DotNet;
 
-namespace ThetaNexus
+namespace ThetaNexus.Api
 {
     internal static class Engine
     {

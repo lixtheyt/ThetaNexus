@@ -1,8 +1,9 @@
 ﻿using Docker.DotNet;
 using Spectre.Console;
 using Color = Spectre.Console.Color;
+using ThetaNexus.Api;
 
-namespace ThetaNexus
+namespace ThetaNexus.Screens
 {
     internal static class EngineDown
     {

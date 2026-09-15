@@ -10,8 +10,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using ThetaNexus.Shared;
 using Color = Spectre.Console.Color;
+using ThetaNexus.Api;
 
-namespace ThetaNexus
+namespace ThetaNexus.Screens
 {
     internal static class ContainerDetails
     {

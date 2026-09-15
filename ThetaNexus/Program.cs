@@ -1,6 +1,8 @@
 ﻿using Spectre.Console;
 using System.Reflection;
 using System.Text;
+using ThetaNexus.Screens;
+using ThetaNexus.Api;
 
 namespace ThetaNexus
 {
