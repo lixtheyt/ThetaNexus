@@ -171,22 +171,9 @@ namespace ThetaNexus.Screens
                             break;
                         case ConsoleKey.Y:
                             {
-                                using var clip = Process.Start(new ProcessStartInfo("clip")
-                                {
-                                    RedirectStandardInput = true,
-                                    UseShellExecute = false
-                                });
-
-                                if (clip != null)
-                                {
-                                    await clip.StandardInput.WriteAsync(inspect.ID);
-
-                                    clip.StandardInput.Close();
-
-                                    await clip.WaitForExitAsync(token);
-                                }
-
-                                notice = ("id copied", Models.Outcome.Succeeded);
+                                notice = await UI.Copy(inspect.ID, token)
+                                    ? ("id copied", Models.Outcome.Succeeded)
+                                    : ("nothing to copy with, install wl-clipboard or xclip", Models.Outcome.Failed);
 
                                 break;
                             }

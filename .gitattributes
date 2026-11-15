@@ -10,3 +10,5 @@
 # The README images are the only non-code in the repository, and counting them
 # would put the language bar on something that is not the project.
 ThetaNexus/assets/** linguist-documentation
+
+*.sh text eol=lf

@@ -1,5 +1,6 @@
 ﻿using Docker.DotNet;
 using Spectre.Console;
+using System.Net.Sockets;
 using Color = Spectre.Console.Color;
 using ThetaNexus.Api;
 
@@ -17,8 +18,11 @@ namespace ThetaNexus.Screens
             var cause = (ex as DockerApiException ?? root as DockerApiException, root) switch
             {
                 ({ } api, _) => $"The engine answered with {(int)api.StatusCode} {api.StatusCode}, so it is running but refused the request. This usually means the client is newer than the engine or that the engine is paused.",
-                (_, TimeoutException) => "The named pipe does not exist, which means Docker Desktop is not running. Start it and this screen moves on by itself.",
-                (_, OperationCanceledException) => "The pipe is there but the engine did not answer in time. Docker Desktop is most likely still starting, or its WSL backend is down.",
+                (_, TimeoutException) when OperatingSystem.IsWindows() => "The named pipe does not exist, which means Docker Desktop is not running. Start it and this screen moves on by itself.",
+                (_, OperationCanceledException) when OperatingSystem.IsWindows() => "The pipe is there but the engine did not answer in time. Docker Desktop is most likely still starting, or its WSL backend is down.",
+                (_, SocketException { SocketErrorCode: SocketError.AccessDenied }) => "The socket is there but this user is not allowed to open it. Add yourself to the docker group and log in again, or start ThetaNexus with sudo.",
+                (_, SocketException) => "Nothing is listening on the socket, which means the Docker engine is not running. Start it and this screen moves on by itself.",
+                (_, TimeoutException or OperationCanceledException) => "The socket is there but the engine did not answer in time. It is most likely still starting.",
                 _ => "The engine could not be reached, and the reason is not one this screen recognises. The red line above is the raw text from the library."
             };
 
@@ -46,7 +50,7 @@ namespace ThetaNexus.Screens
                         {
                             "[bold]The Docker engine is not responding.[/]",
                             string.Empty,
-                            $"[{Color.Grey35.ToMarkup()}]{Markup.Escape(Engine.Pipe)}[/]"
+                            $"[{Color.Grey35.ToMarkup()}]{Markup.Escape(Engine.Endpoint)}[/]"
                         };
 
                         foreach (var wrapped in Wrap(raw, 68))

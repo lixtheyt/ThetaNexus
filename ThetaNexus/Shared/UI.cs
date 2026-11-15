@@ -4,6 +4,8 @@ using Spectre.Console.Rendering;
 using System.Globalization;
 using System.Text.Json;
 using Docker.DotNet;
+using System.ComponentModel;
+using System.Diagnostics;
 using Color = Spectre.Console.Color;
 
 namespace ThetaNexus.Shared
@@ -217,6 +219,44 @@ namespace ThetaNexus.Shared
                 rows[r] = new string(line);
             }
             return rows;
+        }
+
+        internal static async Task<bool> Copy(string text, CancellationToken token)
+        {
+            var info = new ProcessStartInfo(OperatingSystem.IsWindows() ? "clip"
+                : OperatingSystem.IsMacOS() ? "pbcopy"
+                : string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")) ? "xclip"
+                : "wl-copy")
+            {
+                RedirectStandardInput = true,
+                UseShellExecute = false
+            };
+
+            if (info.FileName == "xclip")
+            {
+                info.ArgumentList.Add("-selection");
+                info.ArgumentList.Add("clipboard");
+            }
+
+            try
+            {
+                using var clip = Process.Start(info);
+
+                if (clip == null)
+                    return false;
+
+                await clip.StandardInput.WriteAsync(text);
+
+                clip.StandardInput.Close();
+
+                await clip.WaitForExitAsync(token);
+
+                return clip.ExitCode == 0;
+            }
+            catch (Win32Exception)
+            {
+                return false;
+            }
         }
 
         internal static string Crop(string text, int max)

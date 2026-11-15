@@ -7,7 +7,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4.svg)](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078D6.svg)](#build-it-yourself)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-0078D6.svg)](#build-it-yourself)
 [![Engine](https://img.shields.io/badge/engine-Docker-2496ED.svg)](https://www.docker.com/products/docker-desktop/)
 [![Stardance](https://img.shields.io/badge/stardance_project-FFFF00)](https://stardance.hackclub.com/projects/44647)
 
@@ -45,16 +45,16 @@ ThetaNexus sits between them.
 
 ![ThetaNexus](ThetaNexus/assets/hero.gif)
 
-It reads the engine directly over its named pipe, so it does not need Docker Desktop's window open
+It reads the engine directly, over its named pipe on Windows and its socket on Linux and macOS, so it does not need Docker Desktop's window open
 at all, only its engine running.
 
 ## Quick start
 
-Download the installer from the [latest release](https://github.com/lixtheyt/ThetaNexus/releases/latest)
+On Windows, download the installer from the [latest release](https://github.com/lixtheyt/ThetaNexus/releases/latest)
 and run it:
 
 ```
-ThetaNexus-1.0.0-setup.exe
+ThetaNexus-1.1.0-setup.exe
 ```
 
 It installs into your user folder and adds ThetaNexus to `PATH`, so you can start it from anywhere:
@@ -66,8 +66,26 @@ thetanexus
 No administrator rights are needed. The only thing it changes outside its own folder is your
 `PATH`, and the uninstaller puts that back.
 
-Use **Windows Terminal** rather than `cmd.exe` or `powershell.exe`. The older two cannot draw the
-braille characters the graphs are made of, and the colours come out wrong.
+On Linux and macOS, run this in a terminal instead:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/lixtheyt/ThetaNexus/main/install.sh | sh
+```
+
+It shows you the license, installs ThetaNexus into `~/.local` and adds it to `PATH`. It does not need
+`sudo`. To remove ThetaNexus later, run the same line with `| sh -s -- --uninstall` at the end.
+
+***For the best experience on Windows, use Windows Terminal. (not cmd.exe or powershell.exe)***
+The older two cannot draw the braille characters the graphs are made of, and the colours come out wrong.
+
+***For the best experience on Linux, use a terminal with true color, such as GNOME Terminal, Konsole, kitty or Alacritty.***
+
+***For the best experience on macOS, use iTerm2, Ghostty or kitty.***
+
+ThetaNexus finds the engine by itself. On Windows that is Docker Desktop. On Linux and macOS it
+uses `DOCKER_HOST` when you have set it, and otherwise looks for the socket of Docker Engine,
+Docker Desktop, Colima, OrbStack and Rancher Desktop, in that order. The shell, the raw JSON view
+and the volume size also need the `docker` command to be installed.
 
 If the engine is not running when you start, ThetaNexus tells you what it tried and why it
 failed.
@@ -292,8 +310,15 @@ falling back to `sh` if it does not.
 
 ## Build it yourself
 
-You need Windows, [.NET 10](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) and a running
-Docker engine. Nothing else.
+You need [.NET 10](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) and a running Docker
+engine. Nothing else. Click your system to see how.
+
+<details>
+<summary><b>Windows</b></summary>
+<br>
+
+Install the [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0), then clone the
+repository and build it:
 
 ```sh
 git clone https://github.com/lixtheyt/ThetaNexus.git
@@ -311,10 +336,106 @@ dotnet publish ThetaNexus/ThetaNexus.csproj -p:PublishProfile=SingleFile
 
 The single file is exported to `publish/ThetaNexus.exe`.
 
+</details>
+
+<details>
+<summary><b>Linux</b></summary>
+<br>
+
+Install the .NET 10 SDK with your package manager, for example `sudo apt install dotnet-sdk-10.0`
+or `sudo dnf install dotnet-sdk-10.0`. If your distribution does not have it yet, Microsoft's
+[install script](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-install-script) works everywhere.
+
+Then clone the repository and publish a single file:
+
+```sh
+git clone https://github.com/lixtheyt/ThetaNexus.git
+cd ThetaNexus
+dotnet publish ThetaNexus/ThetaNexus.csproj -c Release --use-current-runtime --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o publish
+```
+
+That gives you one file, `publish/ThetaNexus`, which needs nothing else installed. Run it right away:
+
+```sh
+./publish/ThetaNexus
+```
+
+To be able to type `thetanexus` from anywhere, copy it to a folder that is on your `PATH`:
+
+```sh
+mkdir -p ~/.local/bin
+cp publish/ThetaNexus ~/.local/bin/thetanexus
+```
+
+If ThetaNexus says the socket is there but you are not allowed to open it, add yourself to the
+`docker` group with `sudo usermod -aG docker $USER` and log in again.
+
+Copying a name or an id uses `wl-copy` on Wayland and `xclip` on X11, so install `wl-clipboard`
+or `xclip` if you want that.
+
+The Linux build is new. It compiles and publishes, but it has not been tested the way the Windows
+build has.
+
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
+<br>
+
+Install the .NET 10 SDK. Download the installer from the
+[.NET website](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) and run it, or if you have
+Homebrew, use `brew install dotnet`.
+
+Then clone the repository and publish a single file:
+
+```sh
+git clone https://github.com/lixtheyt/ThetaNexus.git
+cd ThetaNexus
+dotnet publish ThetaNexus/ThetaNexus.csproj -c Release --use-current-runtime --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o publish
+```
+
+That gives you one file, `publish/ThetaNexus`, which needs nothing else installed. Run it right away:
+
+```sh
+./publish/ThetaNexus
+```
+
+To be able to type `thetanexus` from anywhere, copy it to a folder that is on your `PATH`:
+
+```sh
+mkdir -p ~/.local/bin
+cp publish/ThetaNexus ~/.local/bin/thetanexus
+```
+
+The macOS build is new. It compiles and publishes, but it has not been tested the way the Windows
+build has.
+
+</details>
+
+<details>
+<summary><b>Building for another system</b></summary>
+<br>
+
+You can build for a system other than the one you are on. Give the publish command `-r` and one of
+`linux-x64`, `linux-arm64`, `osx-arm64` or `osx-x64`:
+
+```sh
+dotnet publish ThetaNexus/ThetaNexus.csproj -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -o publish
+```
+
+A macOS build made on another system is not signed, so on the Mac it has to be signed once before
+it will start:
+
+```sh
+codesign --force --sign - ThetaNexus
+```
+
+</details>
+
 ## What it is built on
 
 **Docker.DotNet is the brain, not a feature.** ThetaNexus talks to the engine through
-[Docker.DotNet](https://github.com/dotnet/Docker.DotNet) over the named pipe, not by running
+[Docker.DotNet](https://github.com/dotnet/Docker.DotNet) over the engine's pipe or socket, not by running
 `docker` and reading what comes back. Parsing CLI output is fragile, and it throws away everything
 the API already returns as structured data.
 

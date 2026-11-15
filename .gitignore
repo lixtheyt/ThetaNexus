@@ -77,3 +77,5 @@ docs/
 ThetaNexus.iss
 installer-assets/
 installers/
+release/
+release.cs
